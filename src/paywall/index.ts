@@ -1,0 +1,245 @@
+import { createGate } from './gate.js';
+import { createPaywallRenderer } from './renderer.js';
+import { detectExtension } from '../extension/detector.js';
+import { createExtensionBridge } from '../extension/bridge.js';
+import { openAuthPopup, isMobileDevice, consumeTokenFromUrl } from '../auth/popup.js';
+import { tokenStorage } from '../auth/storage.js';
+import { ApiError } from '../api/client.js';
+import type { createCreditsApi } from '../api/credits.js';
+import type { StateStore } from '../core/state.js';
+import type { EventEmitter } from '../core/events.js';
+import type { ResolvedConfig } from '../types/index.js';
+
+declare const __ACCOUNTS_URL__: string;
+
+export function createPaywall(
+  config: ResolvedConfig,
+  creditsApi: ReturnType<typeof createCreditsApi>,
+  state: StateStore,
+  emitter: EventEmitter
+) {
+  const gate = createGate({
+    selector: config.contentSelector,
+    teaserParagraphs: config.teaserParagraphs,
+  });
+
+  const renderer = createPaywallRenderer(config);
+  const bridge = createExtensionBridge();
+  let extensionAvailable = false;
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  function buildAuthUrl(): string {
+    const redirect = encodeURIComponent(config.articleUrl);
+    return `${__ACCOUNTS_URL__}/authenticate/extension?redirect=${redirect}`;
+  }
+
+  function handleAccessGranted(creditsSpent = 0, balance = 0): void {
+    state.set({ hasAccess: true, isLoaded: true, isLoading: false });
+    gate.reveal();
+    renderer.render('granted', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+    emitter.emit('paywall:hidden', {});
+    emitter.emit('article:purchased', { creditsSpent, remainingBalance: balance });
+    config.onAccessGranted?.();
+  }
+
+  // ── Login ─────────────────────────────────────────────────────────────────
+
+  async function doLogin(): Promise<void> {
+    const authUrl = buildAuthUrl();
+
+    if (extensionAvailable) {
+      bridge.requestLogin(config.hostName);
+      return;
+    }
+
+    if (isMobileDevice()) {
+      // Full-page redirect — popup is blocked on mobile
+      window.location.href = authUrl;
+      return;
+    }
+
+    renderer.render('loading', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+    const token = await openAuthPopup(authUrl);
+
+    if (token) {
+      state.set({ isLoggedIn: true });
+      await checkAccess();
+    } else {
+      // Popup closed without login
+      renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+    }
+  }
+
+  // ── Purchase ──────────────────────────────────────────────────────────────
+
+  async function doPurchase(): Promise<void> {
+    if (!tokenStorage.has()) {
+      await doLogin();
+      return;
+    }
+
+    if (extensionAvailable) {
+      bridge.requestPurchase({
+        articleId: config.apiKey,
+        hostName: config.hostName,
+        location: config.articleUrl,
+        title: config.pageTitle,
+      });
+      return;
+    }
+
+    renderer.render('loading', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+    state.set({ isLoading: true });
+
+    try {
+      const result = await creditsApi.purchaseArticle({
+        apiKey: config.apiKey,
+        postUrl: config.articleUrl,
+        postName: config.pageTitle,
+        hostName: config.hostName,
+      });
+
+      if (result.success) {
+        handleAccessGranted(0, 0);
+      } else {
+        state.set({ isLoading: false });
+        renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        emitter.emit('error', { message: result.message ?? 'Purchase failed' });
+      }
+    } catch (err) {
+      state.set({ isLoading: false });
+      if (err instanceof ApiError && err.status === 402) {
+        // Insufficient credits
+        renderer.render('insufficient', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+          requiredCredits: state.get().requiredCredits,
+          creditBalance: state.get().creditBalance,
+        });
+        emitter.emit('credits:insufficient', {
+          required: state.get().requiredCredits ?? 0,
+          available: state.get().creditBalance ?? 0,
+        });
+      } else {
+        renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        emitter.emit('error', { message: 'Purchase failed', error: err });
+      }
+    }
+  }
+
+  function doBuyMoreCredits(): void {
+    window.open(`${__ACCOUNTS_URL__}/consumer/dashboard`, '_blank', 'noopener,noreferrer');
+  }
+
+  // ── Access Check ──────────────────────────────────────────────────────────
+
+  async function checkAccess(): Promise<void> {
+    state.set({ isLoading: true });
+    renderer.render('checking', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+
+    if (extensionAvailable) {
+      bridge.requestAuthorization(config.apiKey, config.hostName);
+      return; // response handled in onAuthorizationResponse
+    }
+
+    if (!tokenStorage.has()) {
+      state.set({ isLoading: false, isLoaded: true });
+      gate.hide();
+      renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+      emitter.emit('paywall:shown', {});
+      return;
+    }
+
+    try {
+      const result = await creditsApi.checkAccess({
+        apiKey: config.apiKey,
+        postUrl: config.articleUrl,
+        postName: config.pageTitle,
+        hostName: config.hostName,
+      });
+
+      state.set({
+        isLoading: false,
+        isLoaded: true,
+        hasAccess: result.success,
+      });
+
+      if (result.success) {
+        handleAccessGranted(0, 0);
+      } else {
+        gate.hide();
+        renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        emitter.emit('paywall:shown', {});
+      }
+    } catch (err) {
+      state.set({ isLoading: false, isLoaded: true });
+      gate.hide();
+      renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+      if (!(err instanceof ApiError && err.status === 401)) {
+        emitter.emit('error', { message: 'Access check failed', error: err });
+      }
+    }
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
+  async function init(): Promise<void> {
+    // Check if user just returned from a mobile login redirect
+    const redirectToken = consumeTokenFromUrl();
+    if (redirectToken) {
+      state.set({ isLoggedIn: true });
+    }
+
+    // Detect extension
+    extensionAvailable = await detectExtension(config.extensionId);
+    state.set({ isExtensionAvailable: extensionAvailable });
+
+    if (extensionAvailable) {
+      bridge.attach();
+      bridge.onAuthorizationResponse(data => {
+        state.set({
+          isLoggedIn: data.isAuthenticated,
+          hasAccess: data.doesHaveAccess,
+          isLoaded: true,
+          isLoading: false,
+          creditBalance: data.creditBalance ?? null,
+          requiredCredits: data.requiredCredits ?? null,
+        });
+
+        if (!data.isAuthenticated) {
+          gate.hide();
+          renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+          emitter.emit('paywall:shown', {});
+        } else if (data.doesHaveAccess) {
+          handleAccessGranted(0, data.creditBalance ?? 0);
+        } else {
+          gate.hide();
+          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+            requiredCredits: data.requiredCredits,
+            creditBalance: data.creditBalance,
+          });
+          emitter.emit('paywall:shown', {});
+        }
+      });
+
+      bridge.onPurchaseResponse(data => {
+        state.set({ isLoading: false, isLoaded: true, hasAccess: data.doesHaveAccess });
+        if (data.doesHaveAccess) {
+          handleAccessGranted(data.creditsSpent ?? 0, data.creditBalance ?? 0);
+        } else {
+          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+          emitter.emit('error', { message: 'Purchase failed via extension' });
+        }
+      });
+    }
+
+    await checkAccess();
+  }
+
+  function destroy(): void {
+    bridge.detach();
+    renderer.destroy();
+    gate.reveal();
+  }
+
+  return { init, checkAccess, destroy };
+}

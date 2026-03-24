@@ -1,0 +1,52 @@
+{
+  "name": "@contentcredits/sdk",
+  "version": "2.0.2",
+  "description": "Content Credits JS SDK — drop-in paywall and comments for any website",
+  "author": "Content Credits",
+  "license": "Apache-2.0",
+  "main": "dist/content-credits.cjs.js",
+  "module": "dist/content-credits.esm.js",
+  "browser": "dist/content-credits.umd.min.js",
+  "types": "dist/content-credits.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/content-credits.esm.js",
+      "require": "./dist/content-credits.cjs.js",
+      "types": "./dist/content-credits.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "rollup -c rollup.config.mjs",
+    "build:watch": "rollup -c rollup.config.mjs --watch",
+    "build:dev": "USE_LOCALHOST=true rollup -c rollup.config.mjs",
+    "demo": "npm run build && npx serve . -l 4444 --no-clipboard",
+    "demo:dev": "npm run build:dev && npx serve . -l 4444 --no-clipboard",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-replace": "^5.0.5",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/node": "^20.11.5",
+    "@typescript-eslint/eslint-plugin": "^6.19.1",
+    "@typescript-eslint/parser": "^6.19.1",
+    "@vitest/coverage-v8": "^1.2.2",
+    "eslint": "^8.56.0",
+    "jsdom": "^24.0.0",
+    "rollup": "^4.9.6",
+    "rollup-plugin-dts": "^6.1.0",
+    "rollup-plugin-terser": "^7.0.2",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.2"
+  }
+}

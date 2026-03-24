@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Content Credits SDK — Test Harness</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Top bar ─────────────────────────────────────────── */
+    #topbar {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 9000;
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+    #topbar h1 { font-size: 14px; font-weight: 700; white-space: nowrap; color: #44C678; }
+    #topbar label { font-size: 12px; color: #aaa; white-space: nowrap; }
+    #topbar input[type=text], #topbar input[type=number] {
+      background: #2a2a3e;
+      border: 1px solid #444;
+      color: #fff;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      outline: none;
+    }
+    #topbar input[type=text]:focus, #topbar input[type=number]:focus { border-color: #44C678; }
+    #topbar input#inp-apikey { width: 220px; }
+    #topbar input#inp-selector { width: 170px; }
+    #topbar input#inp-teaser { width: 50px; }
+    #topbar .check-label {
+      display: flex; align-items: center; gap: 5px; font-size: 12px; color: #ccc; cursor: pointer;
+    }
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-primary { background: #44C678; color: #fff; }
+    .btn-danger  { background: #ef4444; color: #fff; }
+    .btn-neutral { background: #374151; color: #ccc; }
+    .btn-neutral:hover:not(:disabled) { background: #4b5563; }
+    .btn-primary:hover:not(:disabled) { opacity: .85; }
+    .btn-danger:hover:not(:disabled)  { opacity: .85; }
+
+    #status-pill {
+      margin-left: auto;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #374151;
+      color: #9ca3af;
+    }
+    #status-pill.ready  { background: #14532d; color: #4ade80; }
+    #status-pill.error  { background: #7f1d1d; color: #f87171; }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    #layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) {
+      #layout { grid-template-columns: 1fr; }
+    }
+
+    /* ── Article ─────────────────────────────────────────────── */
+    #article-wrap {
+      background: #fff;
+      border-radius: 12px;
+      padding: 40px 48px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    #article-wrap .kicker {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #44C678;
+      margin-bottom: 10px;
+    }
+    #article-wrap h2 {
+      font-size: 28px;
+      line-height: 1.3;
+      margin-bottom: 10px;
+    }
+    #article-wrap .byline {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    #article-wrap p { font-size: 16px; line-height: 1.75; color: #374151; margin-bottom: 16px; }
+    #article-wrap h3 { font-size: 19px; margin: 24px 0 12px; color: #111827; }
+    .cc-premium-content { margin-top: 8px; }
+
+    /* ── Debug sidebar ───────────────────────────────────────── */
+    #debug {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+    .panel-header {
+      background: #1a1a2e;
+      color: #9ca3af;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-body { padding: 14px; }
+
+    /* State display */
+    #state-json {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      background: #f8fafc;
+      border-radius: 6px;
+      padding: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #374151;
+    }
+    .key   { color: #7c3aed; }
+    .val-s { color: #0369a1; }
+    .val-n { color: #b45309; }
+    .val-b { color: #15803d; }
+    .val-null { color: #9ca3af; }
+
+    /* Actions */
+    #actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    #actions-grid .btn { width: 100%; font-size: 11px; padding: 6px 8px; }
+    #action-result {
+      margin-top: 8px;
+      font-family: monospace;
+      font-size: 11px;
+      background: #f8fafc;
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 32px;
+      color: #374151;
+      border-left: 3px solid #44C678;
+    }
+
+    /* Event log */
+    #event-log-list {
+      max-height: 280px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .event-entry {
+      font-family: monospace;
+      font-size: 11px;
+      display: grid;
+      grid-template-columns: 60px 130px 1fr;
+      gap: 6px;
+      align-items: start;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background: #f8fafc;
+    }
+    .event-entry.error-ev { background: #fef2f2; }
+    .event-entry.login-ev { background: #f0fdf4; }
+    .event-ts  { color: #9ca3af; font-size: 10px; padding-top: 1px; }
+    .event-name { color: #7c3aed; font-weight: 700; }
+    .event-payload { color: #374151; word-break: break-all; }
+
+    /* CORS warning */
+    #cors-warn {
+      background: #fffbeb;
+      border: 1px solid #fbbf24;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 12px;
+      color: #92400e;
+      line-height: 1.6;
+    }
+    #cors-warn strong { display: block; margin-bottom: 4px; }
+    #cors-warn code { background: #fef3c7; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+
+    /* SDK version badge */
+    #sdk-ver {
+      font-size: 10px;
+      background: #1e293b;
+      color: #64748b;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top configuration bar ────────────────────────────────────── -->
+<div id="topbar">
+  <h1>CC SDK Test Harness</h1>
+
+  <label>API Key</label>
+  <input type="text" id="inp-apikey" placeholder="pub_xxxxxxxxxxxxxxxx" />
+
+  <label>Content selector</label>
+  <input type="text" id="inp-selector" value=".cc-premium-content" />
+
+  <label>Teaser ¶s</label>
+  <input type="number" id="inp-teaser" value="2" min="0" max="10" />
+
+  <label class="check-label">
+    <input type="checkbox" id="chk-comments" checked />
+    Comments
+  </label>
+
+  <button class="btn btn-primary" id="btn-init">Initialize SDK</button>
+  <button class="btn btn-danger"  id="btn-destroy" disabled>Destroy</button>
+
+  <div id="status-pill">idle</div>
+  <span id="sdk-ver"></span>
+</div>
+
+<!-- ── Main layout ───────────────────────────────────────────────── -->
+<div id="layout">
+
+  <!-- Left: article content -->
+  <div id="article-wrap">
+    <div class="kicker">Exclusive Report</div>
+    <h2>The Future of Independent Publishing in a Subscription-Fatigued World</h2>
+    <p class="byline">By Jane Whitmore &nbsp;·&nbsp; 6 min read &nbsp;·&nbsp; March 2026</p>
+
+    <p>
+      The economics of digital publishing have never been more precarious. Revenue from
+      traditional display advertising has declined for the fifth consecutive year, while
+      reader tolerance for interruptive ads has reached an all-time low. Yet readers have
+      also grown weary of maintaining a portfolio of monthly subscriptions — the average
+      household now juggles eleven recurring content bills.
+    </p>
+
+    <p>
+      Into this tension steps a new model: micro-transactions at the article level.
+      Pay once, read once. No commitment. No renewal. No forgotten charges.
+    </p>
+
+    <!-- Everything below this line is gated -->
+    <div class="cc-premium-content">
+      <h3>Why Per-Article Pricing Works Now</h3>
+      <p>
+        Three conditions have converged to make this moment different from the failed
+        micro-payment experiments of the early 2000s. First, the infrastructure is
+        finally ready: stored payment credentials, instant settlement rails, and
+        browser-native payment APIs eliminate the friction that killed early attempts.
+        Second, readers have developed a mental model for one-time digital purchases
+        through app stores and streaming rentals. Third — and perhaps most importantly —
+        publishers are desperate enough to experiment.
+      </p>
+
+      <h3>The Credit Economy</h3>
+      <p>
+        Rather than charging readers per-article in real dollars (which re-introduces
+        payment friction), the most promising implementations use a pre-purchased credit
+        pool. Readers load credits in bulk — think of it like a transit card — and
+        individual articles draw down the balance automatically. The psychological cost
+        of spending a credit is far lower than consciously authorising a 25-cent charge.
+      </p>
+      <p>
+        Publishers set their own per-article credit price. Data from early adopters
+        suggests most are pricing between two and five credits, with longer or more
+        specialised pieces commanding a premium. Importantly, readers are shown the
+        credit price before they commit, so there are no surprises.
+      </p>
+
+      <h3>What the Numbers Say</h3>
+      <p>
+        Among the first cohort of publishers to roll out credit-gated content, monthly
+        reader revenue per article increased by an average of 340% compared with ad
+        revenue alone. Crucially, bounce rates on gated articles dropped — suggesting
+        that the act of paying, however small the amount, increases the perceived value
+        of the content and the likelihood of reading it in full.
+      </p>
+
+      <h3>The Road Ahead</h3>
+      <p>
+        The model is not without its challenges. Discovery suffers when content is hidden
+        behind a gate; SEO benefits must be balanced against revenue goals. Gift links,
+        social previews, and metered access are all active areas of product development.
+        But the trajectory is clear: the all-or-nothing subscription era is giving way to
+        something more granular, more reader-controlled, and ultimately more sustainable
+        for independent journalism.
+      </p>
+    </div>
+  </div>
+
+  <!-- Right: debug panel -->
+  <div id="debug">
+
+    <!-- CORS warning (shown only on localhost) -->
+    <div id="cors-warn" style="display:none">
+      <strong>⚠ Localhost CORS restriction</strong>
+      The production API (<code>api.contentcredits.com</code>) only accepts requests from
+      registered publisher domains. Running on <code>localhost</code> will cause API calls to
+      fail with CORS errors.<br><br>
+      <strong>Options:</strong><br>
+      1. Use <code>ngrok</code> to expose this page on a public URL, then register that domain
+      as a publisher website.<br>
+      2. Build with <code>npm run build:dev</code> and run the backend locally.
+    </div>
+
+    <!-- Live SDK state -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>SDK State</span>
+        <button class="btn btn-neutral" id="btn-refresh-state" style="padding:2px 8px;font-size:10px;">↻ Refresh</button>
+      </div>
+      <div class="panel-body">
+        <pre id="state-json">—</pre>
+      </div>
+    </div>
+
+    <!-- Manual actions -->
+    <div class="panel">
+      <div class="panel-header">Actions</div>
+      <div class="panel-body">
+        <div id="actions-grid">
+          <button class="btn btn-neutral" id="btn-check-access"   disabled>checkAccess()</button>
+          <button class="btn btn-neutral" id="btn-open-comments"  disabled>openComments()</button>
+          <button class="btn btn-neutral" id="btn-close-comments" disabled>closeComments()</button>
+          <button class="btn btn-neutral" id="btn-is-logged-in"   disabled>isLoggedIn()</button>
+          <button class="btn btn-neutral" id="btn-get-state"      disabled>getState()</button>
+          <button class="btn btn-neutral" id="btn-version"        disabled>version</button>
+        </div>
+        <div id="action-result"></div>
+      </div>
+    </div>
+
+    <!-- Event log -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Event Log</span>
+        <button class="btn btn-neutral" id="btn-clear-events" style="padding:2px 8px;font-size:10px;">Clear</button>
+      </div>
+      <div class="panel-body">
+        <div id="event-log-list"><span style="color:#9ca3af;font-size:12px">No events yet.</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Load the built UMD bundle -->
+<script src="../dist/content-credits.umd.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Elements ───────────────────────────────────────────────────────────────
+  const E = id => document.getElementById(id);
+  const btnInit         = E('btn-init');
+  const btnDestroy      = E('btn-destroy');
+  const btnCheckAccess  = E('btn-check-access');
+  const btnOpenComments = E('btn-open-comments');
+  const btnCloseComments= E('btn-close-comments');
+  const btnIsLoggedIn   = E('btn-is-logged-in');
+  const btnGetState     = E('btn-get-state');
+  const btnVersion      = E('btn-version');
+  const btnRefreshState = E('btn-refresh-state');
+  const btnClearEvents  = E('btn-clear-events');
+  const stateJsonEl     = E('state-json');
+  const actionResultEl  = E('action-result');
+  const eventLogEl      = E('event-log-list');
+  const statusPill      = E('status-pill');
+  const sdkVerEl        = E('sdk-ver');
+  const corsWarnEl      = E('cors-warn');
+
+  // ── CORS warning ───────────────────────────────────────────────────────────
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    corsWarnEl.style.display = 'block';
+  }
+
+  // ── SDK version badge ──────────────────────────────────────────────────────
+  if (window.ContentCreditsSDK) {
+    sdkVerEl.textContent = 'v' + (window.ContentCreditsSDK.ContentCredits.version || '?');
+  } else {
+    sdkVerEl.textContent = 'SDK not loaded';
+    sdkVerEl.style.color = '#ef4444';
+  }
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let cc = null; // current SDK instance
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function ts() {
+    return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function formatJson(obj) {
+    if (obj === null || obj === undefined) return '<span class="val-null">null</span>';
+    const s = JSON.stringify(obj, null, 2);
+    return s.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:')
+            .replace(/: "([^"]*)"/g, ': <span class="val-s">"$1"</span>')
+            .replace(/: (\d+\.?\d*)/g, ': <span class="val-n">$1</span>')
+            .replace(/: (true|false)/g, ': <span class="val-b">$1</span>')
+            .replace(/: (null)/g, ': <span class="val-null">$1</span>');
+  }
+
+  function renderState() {
+    if (!cc) { stateJsonEl.innerHTML = '—'; return; }
+    try {
+      stateJsonEl.innerHTML = formatJson(cc.getState());
+    } catch (e) {
+      stateJsonEl.textContent = String(e);
+    }
+  }
+
+  function logEvent(name, payload) {
+    // Remove "no events" placeholder
+    const placeholder = eventLogEl.querySelector('span');
+    if (placeholder) placeholder.remove();
+
+    const entry = document.createElement('div');
+    const isError = name === 'error';
+    const isLogin = name === 'auth:login';
+    entry.className = 'event-entry' + (isError ? ' error-ev' : '') + (isLogin ? ' login-ev' : '');
+
+    const tsEl = document.createElement('span');
+    tsEl.className = 'event-ts';
+    tsEl.textContent = ts();
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'event-name';
+    nameEl.textContent = name;
+
+    const payloadEl = document.createElement('span');
+    payloadEl.className = 'event-payload';
+    try { payloadEl.textContent = JSON.stringify(payload); } catch { payloadEl.textContent = '…'; }
+
+    entry.appendChild(tsEl);
+    entry.appendChild(nameEl);
+    entry.appendChild(payloadEl);
+
+    eventLogEl.insertBefore(entry, eventLogEl.firstChild);
+    renderState(); // refresh state after each event
+  }
+
+  function showResult(text, isError) {
+    actionResultEl.textContent = text;
+    actionResultEl.style.borderLeftColor = isError ? '#ef4444' : '#44C678';
+  }
+
+  function setReady(ready) {
+    const actionBtns = [btnCheckAccess, btnOpenComments, btnCloseComments, btnIsLoggedIn, btnGetState, btnVersion];
+    actionBtns.forEach(b => b.disabled = !ready);
+    btnDestroy.disabled = !ready;
+    btnInit.disabled    = ready;
+    statusPill.textContent = ready ? 'ready' : 'idle';
+    statusPill.className   = ready ? 'ready' : '';
+  }
+
+  // ── All SDK events ─────────────────────────────────────────────────────────
+  const ALL_EVENTS = [
+    'ready',
+    'auth:login',
+    'auth:logout',
+    'paywall:shown',
+    'paywall:hidden',
+    'article:purchased',
+    'credits:insufficient',
+    'comment:posted',
+    'comment:liked',
+    'comment:deleted',
+    'error',
+  ];
+
+  function attachEventListeners() {
+    ALL_EVENTS.forEach(ev => {
+      cc.on(ev, payload => logEvent(ev, payload));
+    });
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  btnInit.addEventListener('click', () => {
+    const apiKey = E('inp-apikey').value.trim();
+    if (!apiKey) { showResult('⚠ Enter an API key first.', true); return; }
+
+    if (!window.ContentCreditsSDK) {
+      showResult('⚠ SDK bundle not loaded. Run "npm run build" first.', true);
+      return;
+    }
+
+    if (cc) {
+      try { cc.destroy(); } catch {}
+      cc = null;
+    }
+
+    try {
+      cc = window.ContentCreditsSDK.ContentCredits.init({
+        apiKey,
+        contentSelector: E('inp-selector').value.trim() || '.cc-premium-content',
+        teaserParagraphs: parseInt(E('inp-teaser').value, 10) || 2,
+        enableComments: E('chk-comments').checked,
+        debug: true,
+      });
+
+      attachEventListeners();
+      setReady(true);
+      showResult('SDK initialized ✓');
+      logEvent('init', { apiKey: apiKey.slice(0, 8) + '…', ts: ts() });
+    } catch (e) {
+      showResult('Init failed: ' + e.message, true);
+      statusPill.textContent = 'error';
+      statusPill.className = 'error';
+    }
+  });
+
+  // ── Destroy ────────────────────────────────────────────────────────────────
+  btnDestroy.addEventListener('click', () => {
+    if (!cc) return;
+    cc.destroy();
+    cc = null;
+    setReady(false);
+    stateJsonEl.innerHTML = '—';
+    showResult('SDK destroyed ✓');
+    logEvent('destroyed', {});
+  });
+
+  // ── Action buttons ─────────────────────────────────────────────────────────
+  btnCheckAccess.addEventListener('click', async () => {
+    if (!cc) return;
+    showResult('Checking access…');
+    try {
+      await cc.checkAccess();
+      showResult('checkAccess() called ✓ (see events)');
+      renderState();
+    } catch (e) {
+      showResult('Error: ' + e.message, true);
+    }
+  });
+
+  btnOpenComments.addEventListener('click', () => {
+    if (!cc) return;
+    cc.openComments();
+    showResult('openComments() called ✓');
+  });
+
+  btnCloseComments.addEventListener('click', () => {
+    if (!cc) return;
+    cc.closeComments();
+    showResult('closeComments() called ✓');
+  });
+
+  btnIsLoggedIn.addEventListener('click', () => {
+    if (!cc) return;
+    const result = cc.isLoggedIn();
+    showResult('isLoggedIn() → ' + result);
+  });
+
+  btnGetState.addEventListener('click', () => {
+    if (!cc) return;
+    renderState();
+    showResult('getState() → see State panel ↑');
+  });
+
+  btnVersion.addEventListener('click', () => {
+    showResult('version → ' + window.ContentCreditsSDK.ContentCredits.version);
+  });
+
+  btnRefreshState.addEventListener('click', renderState);
+
+  btnClearEvents.addEventListener('click', () => {
+    eventLogEl.innerHTML = '<span style="color:#9ca3af;font-size:12px">No events yet.</span>';
+  });
+
+  // ── Also listen for native CustomEvents on document ────────────────────────
+  // (SDK dispatches these as contentcredits:<event> for vanilla listeners)
+  ALL_EVENTS.forEach(ev => {
+    document.addEventListener('contentcredits:' + ev, e => {
+      // Only log if SDK instance is attached (avoids duplicates when using cc.on too)
+      // These fire regardless — useful to confirm the CustomEvent path works
+    });
+  });
+
+  // ── Keyboard shortcut: Ctrl+Enter to init ──────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') btnInit.click();
+  });
+
+})();
+</script>
+</body>
+</html>
