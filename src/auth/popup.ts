@@ -1,4 +1,4 @@
-import { tokenStorage } from './storage.js';
+import { tokenStorage, refreshTokenStorage } from './storage.js';
 
 const POPUP_NAME = 'ccAuthPopup';
 const POPUP_SPECS = 'scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=600,height=650';
@@ -24,7 +24,7 @@ export function scrubTokenFromUrl(): void {
   try {
     const url = new URL(window.location.href);
     let changed = false;
-    ['token', 'cc_token'].forEach(param => {
+    ['token', 'cc_token', 'refresh_token', 'cc_refresh_token'].forEach(param => {
       if (url.searchParams.has(param)) {
         url.searchParams.delete(param);
         changed = true;
@@ -47,7 +47,14 @@ export function consumeTokenFromUrl(): string | null {
   try {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('token') ?? url.searchParams.get('cc_token');
+    const refreshToken = url.searchParams.get('refresh_token') ?? url.searchParams.get('cc_refresh_token');
+
+    // Scrub ALL auth params before doing anything else
     scrubTokenFromUrl();
+
+    if (refreshToken) {
+      refreshTokenStorage.set(refreshToken);
+    }
     if (token) {
       tokenStorage.set(token);
       return token;
@@ -105,8 +112,12 @@ export function openAuthPopup(authUrl: string): Promise<string | null> {
         if (popupUrl.includes('/auth/callback') || popupUrl.includes('cc_token=') || popupUrl.includes('token=')) {
           const params = new URLSearchParams(popup.location.search);
           const token = params.get('token') ?? params.get('cc_token');
+          const refreshToken = params.get('refresh_token') ?? params.get('cc_refresh_token');
           if (token) {
             tokenStorage.set(token);
+            if (refreshToken) {
+              refreshTokenStorage.set(refreshToken);
+            }
             clearInterval(timer);
             try { popup.close(); } catch { /* ignore */ }
             resolve(token);

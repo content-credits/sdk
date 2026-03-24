@@ -24,6 +24,7 @@ import { createPaywall } from './paywall/index.js';
 import { createComments } from './comments/index.js';
 import { tokenStorage } from './auth/storage.js';
 import { consumeTokenFromUrl } from './auth/popup.js';
+import { tryRefreshSession } from './auth/session.js';
 
 import type {
   SDKConfig,
@@ -73,8 +74,16 @@ export class ContentCredits {
   // ── Internal start ────────────────────────────────────────────────────────
 
   private async _start(): Promise<void> {
-    // Handle token that may have arrived in the URL (mobile redirect flow)
+    // 1. Consume any token that arrived in the URL (mobile redirect flow)
     consumeTokenFromUrl();
+
+    // 2. If no access token in memory/session, attempt a silent refresh.
+    //    This runs on every new browser session (after the browser was closed)
+    //    and silently re-authenticates the user using their stored refresh token
+    //    — no popup, no visible delay, no paywall flash.
+    if (!tokenStorage.has()) {
+      await tryRefreshSession(this.config.apiBaseUrl);
+    }
 
     this.paywallModule = createPaywall(
       this.config,

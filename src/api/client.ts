@@ -1,4 +1,5 @@
-import { tokenStorage } from '../auth/storage.js';
+import { tokenStorage, refreshTokenStorage } from '../auth/storage.js';
+import { tryRefreshSession } from '../auth/session.js';
 import type { EventEmitter } from '../core/events.js';
 
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -25,7 +26,8 @@ export function createApiClient(baseUrl: string, emitter: EventEmitter) {
     method: string,
     path: string,
     body?: Record<string, unknown>,
-    attempt = 0
+    attempt = 0,
+    authRetried = false   // true after one silent-refresh attempt, prevents loops
   ): Promise<T> {
     const url = `${baseUrl}${path}`;
     const serialisedBody = body ? JSON.stringify(body) : undefined;
@@ -57,7 +59,18 @@ export function createApiClient(baseUrl: string, emitter: EventEmitter) {
         clearTimeout(timeoutId);
 
         if (response.status === 401) {
+          // Try a silent refresh once before giving up.
+          // authRetried guard prevents an infinite loop if the refresh
+          // endpoint itself returns 401.
+          if (!authRetried) {
+            const refreshed = await tryRefreshSession(baseUrl);
+            if (refreshed) {
+              inFlight.delete(key);
+              return request<T>(method, path, body, attempt, true);
+            }
+          }
           tokenStorage.clear();
+          refreshTokenStorage.clear();
           emitter.emit('auth:logout', {});
           throw new ApiError(401, 'Unauthorized — session expired');
         }

@@ -1,16 +1,23 @@
 import { isTokenExpired } from './token.js';
 
 const SESSION_KEY = 'cc_sdk_token';
+const REFRESH_KEY  = 'cc_rt';
 
 /**
- * Two-layer token storage:
- *  1. In-memory (primary) — invisible to other scripts, survives page navigations
- *     within the same JS context but gone on hard reload.
- *  2. sessionStorage (secondary) — survives soft reloads, cleared when the tab
- *     closes, never shared across tabs.
+ * Three-layer auth storage:
  *
- * We intentionally never use document.cookie (no HttpOnly = XSS risk) or
- * localStorage (persists indefinitely across sessions).
+ *  ACCESS TOKEN (short-lived JWT, ~15 min)
+ *  ┌─ Layer 1: in-memory  — invisible to other scripts; cleared on page close
+ *  └─ Layer 2: sessionStorage — survives soft reloads; cleared when tab closes
+ *
+ *  REFRESH TOKEN (long-lived opaque token, ~30 days)
+ *  └─ Layer 3: localStorage — survives browser close; used to silently
+ *     re-authenticate on the next visit without showing a popup
+ *
+ * We intentionally never write to document.cookie (no HttpOnly = XSS risk).
+ * The refresh token in localStorage is the accepted industry trade-off:
+ * it persists across sessions at the cost of XSS accessibility, mitigated
+ * by short-lived access tokens and server-side refresh token rotation.
  */
 let memoryToken: string | null = null;
 
@@ -56,6 +63,45 @@ export const tokenStorage = {
     memoryToken = null;
     try {
       sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      // ignore
+    }
+  },
+
+  has(): boolean {
+    return this.get() !== null;
+  },
+};
+
+/**
+ * Refresh token storage — localStorage only.
+ *
+ * Stored on the publisher's domain (first-party storage) so it is never
+ * subject to third-party cookie / storage blocking in any browser.
+ * Refresh tokens are opaque strings issued by the backend and rotated
+ * on every use.
+ */
+export const refreshTokenStorage = {
+  set(token: string): void {
+    try {
+      localStorage.setItem(REFRESH_KEY, token);
+    } catch {
+      // localStorage unavailable (private mode with strict settings) — degrade
+      // to session-only auth gracefully
+    }
+  },
+
+  get(): string | null {
+    try {
+      return localStorage.getItem(REFRESH_KEY);
+    } catch {
+      return null;
+    }
+  },
+
+  clear(): void {
+    try {
+      localStorage.removeItem(REFRESH_KEY);
     } catch {
       // ignore
     }

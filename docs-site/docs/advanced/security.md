@@ -12,18 +12,72 @@ This page documents the security decisions made in the Content Credits SDK v2 an
 
 ## Token storage
 
-### What we do
+The SDK uses a **three-layer model** that separates two different tokens with different lifetimes and different security requirements.
 
-Auth tokens are stored in **memory first**, with `sessionStorage` as a fallback if the in-memory store is cleared (e.g. page hidden event, back-forward cache).
+### The two tokens
+
+| | Access token | Refresh token |
+|---|---|---|
+| **What it is** | Short-lived JWT | Long-lived opaque string |
+| **Lifetime** | ~15 minutes | ~30 days |
+| **Purpose** | Authorise every API call | Silently obtain a new access token |
+| **Stored in** | Memory + `sessionStorage` | `localStorage` |
+| **Survives browser close?** | No | Yes |
+
+### Access token — memory + sessionStorage
 
 ```
-Token lifecycle:
-  Login → in-memory store (primary)
-             └─ sessionStorage (fallback, same tab only)
+Login
+  └─▶ in-memory store (primary)
+        └─▶ sessionStorage (fallback)
 
-  Page reload → read from sessionStorage → back into memory
-  Tab close   → sessionStorage cleared by browser
-  Token expiry → auto-cleared on read
+Page reload   → read from sessionStorage → warm up memory
+Tab close     → sessionStorage cleared by browser
+Browser close → sessionStorage cleared by browser
+Token expiry  → auto-cleared on next read
+```
+
+The access token never touches `localStorage` or `document.cookie`. It is accessible only inside the SDK's own closure.
+
+### Refresh token — localStorage
+
+```
+Login
+  └─▶ localStorage  (key: cc_rt)
+
+Browser close + reopen
+  └─▶ SDK init reads cc_rt from localStorage
+        └─▶ POST /auth/refresh → new access token + new refresh token
+              └─▶ User silently re-authenticated, no popup shown
+```
+
+The refresh token lives in `localStorage` on the **publisher's domain** — this is first-party storage, so it is never affected by third-party cookie or storage blocking in any browser (Safari ITP, Firefox ETP, Chrome Privacy Sandbox).
+
+### Refresh token rotation
+
+Every call to `/auth/refresh` returns a **new** refresh token and invalidates the old one. This means:
+
+- A stolen refresh token can only be used once before the legitimate user rotates it
+- The backend can detect anomalous re-use (two clients using the same token in quick succession) and revoke the entire session
+- There is no persistent credential that stays valid indefinitely
+
+### Silent re-authentication flow
+
+```
+User closes browser
+  └─▶ Access token cleared (memory + sessionStorage gone)
+       Refresh token persists (localStorage)
+
+User opens publisher site next day
+  └─▶ SDK initialises
+        └─▶ tokenStorage.has() → false
+              └─▶ tryRefreshSession() called
+                    └─▶ POST /auth/refresh with stored refresh token
+                          ├─▶ Success → new access token in memory
+                          │            new refresh token in localStorage
+                          │            paywall check runs, no popup shown
+                          └─▶ Failure → refresh token cleared
+                                        login popup shown as normal
 ```
 
 ### Why not cookies?
@@ -34,11 +88,17 @@ The original SDK (v1) stored the auth token in a cookie named `cc-token` with no
 2. The token was sent to every request to your domain, not just Content Credits API calls
 3. CSRF attacks were possible
 
-The v2 SDK never writes to `document.cookie`. The token is only ever accessible to the SDK's own closure.
+The v2 SDK never writes to `document.cookie`.
 
-### Why not `localStorage`?
+### Why not an iframe-based silent auth?
 
-`localStorage` persists indefinitely across all tabs and browser sessions. A stolen token stored in `localStorage` would remain valid until it expires. `sessionStorage` is scoped to a single tab and is cleared automatically when the tab is closed.
+The previous approach to cross-session persistence (used by Auth0's `checkSession()`) opened a hidden `<iframe>` to `accounts.contentcredits.com` and relied on that domain's cookie being readable inside the iframe. This is blocked by:
+
+- **Safari** — Intelligent Tracking Prevention (since 2017)
+- **Firefox** — Enhanced Tracking Protection
+- **Chrome** — Third-party cookie deprecation (rolling out now)
+
+The refresh token approach avoids this entirely because storage is read from the **publisher's own domain**, not a cross-origin iframe.
 
 ---
 
@@ -147,7 +207,7 @@ Every API request made by the SDK:
 2. Has a 12-second timeout via `AbortController`
 3. Retries up to 3 times on network errors and 5xx responses with exponential backoff (1s → 2s → 4s)
 4. Uses request deduplication — if the same request is already in-flight, the duplicate waits for the first to complete rather than firing a second network call
-5. On 401 response → emits `auth:logout` and clears the stored token
+5. On 401 response → attempts one silent token refresh automatically, then retries the original request; if the refresh also fails, emits `auth:logout` and clears both tokens
 
 ---
 
