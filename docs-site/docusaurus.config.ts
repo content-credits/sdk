@@ -46,10 +46,11 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'Content Credits',
+      title: '',
       logo: {
         alt: 'Content Credits',
         src: 'img/logo.svg',
+        style: { height: '28px', width: 'auto' },
       },
       items: [
         {
@@ -76,7 +77,7 @@ const config: Config = {
         {
           title: 'Docs',
           items: [
-            { label: 'Introduction', to: '/intro' },
+            { label: 'Introduction', to: '/' },
             { label: 'Quick Start', to: '/getting-started/quick-start' },
             { label: 'API Reference', to: '/api-reference/contentcredits-class' },
           ],

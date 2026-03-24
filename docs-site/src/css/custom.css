@@ -1,4 +1,4 @@
-/* Content Credits brand tokens */
+/* ─── Brand tokens ──────────────────────────────────────────── */
 :root {
   --ifm-color-primary: #44C678;
   --ifm-color-primary-dark: #2db862;
@@ -26,149 +26,17 @@
   --docusaurus-highlighted-code-line-bg: rgba(68, 198, 120, 0.15);
 }
 
+/* ─── Navbar ────────────────────────────────────────────────── */
 .navbar {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
 }
-.navbar__title {
-  font-weight: 800;
-  letter-spacing: -0.02em;
+
+/* Logo is dark grey — invert to white in dark mode */
+[data-theme='dark'] .navbar__logo img {
+  filter: brightness(0) invert(1);
 }
 
-/* Hero */
-.hero-banner {
-  background: linear-gradient(135deg, #0f1117 0%, #1a2e1a 50%, #0f1117 100%);
-  padding: 80px 0 60px;
-  text-align: center;
-  color: #fff;
-}
-.hero-banner h1 {
-  font-size: clamp(2rem, 5vw, 3.4rem);
-  font-weight: 800;
-  line-height: 1.15;
-  margin-bottom: 20px;
-  letter-spacing: -0.03em;
-}
-.hero-subtitle {
-  font-size: 1.2rem;
-  color: rgba(255,255,255,0.65);
-  max-width: 560px;
-  margin: 0 auto 36px;
-  line-height: 1.6;
-}
-.hero-badge {
-  display: inline-block;
-  background: rgba(68,198,120,0.15);
-  border: 1px solid rgba(68,198,120,0.35);
-  color: #44C678;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 14px;
-  border-radius: 20px;
-  margin-bottom: 24px;
-  letter-spacing: 0.04em;
-}
-.hero-ctas {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-/* Feature cards */
-.features-section {
-  padding: 64px 0;
-}
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 20px;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-.feature-card {
-  background: var(--ifm-background-surface-color, #fff);
-  border: 1px solid var(--ifm-color-emphasis-200);
-  border-radius: 12px;
-  padding: 28px;
-  transition: box-shadow 0.2s, border-color 0.2s;
-}
-.feature-card:hover {
-  box-shadow: 0 4px 24px rgba(68,198,120,0.12);
-  border-color: var(--ifm-color-primary);
-}
-.feature-icon {
-  font-size: 32px;
-  margin-bottom: 14px;
-  display: block;
-}
-.feature-card h3 {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-.feature-card p {
-  font-size: 14px;
-  color: var(--ifm-color-emphasis-700);
-  line-height: 1.6;
-  margin: 0;
-}
-
-/* Code quickstart section */
-.quickstart-section {
-  background: #0f1117;
-  padding: 60px 0;
-}
-.quickstart-section h2 {
-  text-align: center;
-  font-size: 2rem;
-  font-weight: 800;
-  color: #fff;
-  margin-bottom: 8px;
-}
-.quickstart-sub {
-  text-align: center;
-  color: rgba(255,255,255,0.5);
-  margin-bottom: 32px;
-  font-size: 15px;
-}
-.quickstart-inner {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-/* Stats bar */
-.stats-bar {
-  background: #44C678;
-  padding: 24px 0;
-}
-.stats-inner {
-  display: flex;
-  justify-content: center;
-  gap: 60px;
-  flex-wrap: wrap;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 0 24px;
-}
-.stat-item {
-  text-align: center;
-  color: #fff;
-}
-.stat-number {
-  font-size: 2rem;
-  font-weight: 800;
-  display: block;
-  line-height: 1;
-}
-.stat-label {
-  font-size: 13px;
-  opacity: 0.85;
-  margin-top: 4px;
-}
-
+/* ─── Docs ──────────────────────────────────────────────────── */
 code {
   border-radius: 4px;
   font-size: 90%;
