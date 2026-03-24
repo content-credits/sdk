@@ -29,7 +29,7 @@ interface SDKConfig {
 
 ### `apiKey` · `string`
 
-Your publisher API key. Get it from [app.contentcredits.com](https://app.contentcredits.com) → Settings → API Keys.
+Your publisher API key. Get it from [accounts.contentcredits.com](https://accounts.contentcredits.com) → Settings → API Keys.
 
 ```ts
 apiKey: 'pub_abc123def456ghi789'

@@ -60,7 +60,7 @@ const config: Config = {
           label: 'Documentation',
         },
         {
-          href: 'https://app.contentcredits.com',
+          href: 'https://accounts.contentcredits.com',
           label: 'Dashboard',
           position: 'right',
         },
@@ -93,7 +93,7 @@ const config: Config = {
         {
           title: 'Content Credits',
           items: [
-            { label: 'Dashboard', href: 'https://app.contentcredits.com' },
+            { label: 'Dashboard', href: 'https://accounts.contentcredits.com' },
             { label: 'Website', href: 'https://contentcredits.com' },
             { label: 'Support', href: 'mailto:support@contentcredits.com' },
           ],

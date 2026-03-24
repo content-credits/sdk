@@ -12,7 +12,7 @@ Content Credits has a **dedicated WordPress plugin** that wraps the JS SDK. It's
 
 ## Installing the plugin
 
-1. Download the plugin ZIP from your [Content Credits dashboard](https://app.contentcredits.com) → Integrations → WordPress
+1. Download the plugin ZIP from your [Content Credits dashboard](https://accounts.contentcredits.com) → Integrations → WordPress
 2. In your WordPress admin: **Plugins → Add New → Upload Plugin**
 3. Upload the ZIP and click **Activate**
 

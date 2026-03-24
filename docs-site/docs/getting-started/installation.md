@@ -93,5 +93,5 @@ ContentCreditsSDK.ContentCredits.version
 If you see a version number, the SDK loaded correctly.
 
 :::tip Domain registration
-Your domain must be registered as a publisher in the [Content Credits dashboard](https://app.contentcredits.com) before API calls will work. The API rejects requests from unregistered domains.
+Your domain must be registered as a publisher in the [Content Credits dashboard](https://accounts.contentcredits.com) before API calls will work. The API rejects requests from unregistered domains.
 :::

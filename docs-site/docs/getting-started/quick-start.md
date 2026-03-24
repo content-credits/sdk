@@ -12,7 +12,7 @@ Get a working paywall and comment system on your site in under 5 minutes.
 
 ## Prerequisites
 
-1. A **Content Credits publisher account** — [sign up at app.contentcredits.com](https://app.contentcredits.com)
+1. A **Content Credits publisher account** — [sign up at accounts.contentcredits.com](https://accounts.contentcredits.com)
 2. Your **API key** — found in Dashboard → Settings → API Keys (format: `pub_xxxxxxxxxxxxxxxx`)
 3. Your domain registered as a publisher website in the dashboard
 
