@@ -9,7 +9,7 @@ const useLocalhost = process.env.USE_LOCALHOST === 'true';
 const replaceValues = {
   __USE_LOCALHOST__: JSON.stringify(useLocalhost),
   __API_BASE_URL__: JSON.stringify(
-    useLocalhost ? 'http://localhost:9000/api' : 'https://api.contentcredits.com'
+    useLocalhost ? 'http://localhost:4000' : 'https://api.contentcredits.com'
   ),
   __ACCOUNTS_URL__: JSON.stringify(
     useLocalhost ? 'http://localhost:3000' : 'https://accounts.contentcredits.com'
