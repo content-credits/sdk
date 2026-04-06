@@ -13,6 +13,11 @@ const config: Config = {
 
   url: 'https://docs.contentcredits.com',
   baseUrl: '/',
+  trailingSlash: false,
+
+  organizationName: 'content-credits',
+  projectName: 'sdk',
+  deploymentBranch: 'gh-pages',
 
   onBrokenLinks: 'warn',
   markdown: {
