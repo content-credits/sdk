@@ -279,3 +279,13 @@ router.on('navigate', (newUrl) => {
 ```
 
 The `articleUrl` option ensures the access check is done for the new article, not the previous one.
+
+---
+
+## Full example
+
+A complete, runnable Next.js 14 blog using this pattern is available in the SDK repository:
+
+**[`examples/nextjs-blog`](https://github.com/content-credits/sdk/tree/main/examples/nextjs-blog)**
+
+It includes free and premium articles, the `PremiumGate` component, and a one-click Vercel deploy button.

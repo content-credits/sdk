@@ -171,6 +171,14 @@ export function PremiumGate({ apiKey, children }) {
 
 ---
 
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [`examples/nextjs-blog`](./examples/nextjs-blog) | Next.js 14 (App Router) blog with free and premium articles — the fastest way to see the SDK in a real project |
+
+---
+
 ## Links
 
 - [Full documentation](https://docs.contentcredits.com)
