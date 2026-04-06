@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@contentcredits/sdk": "^2.0.4",
+    "@contentcredits/sdk": "^2.1.0",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18"

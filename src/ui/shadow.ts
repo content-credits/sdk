@@ -22,6 +22,26 @@ export function createShadowHost(id: string): { host: HTMLElement; root: ShadowR
   return { host, root };
 }
 
+/**
+ * Creates a shadow host inserted immediately after `anchorEl` in the DOM.
+ * Used for the inline paywall panel so it flows naturally below the content.
+ */
+export function createInlineShadowHost(id: string, anchorEl: HTMLElement): { host: HTMLElement; root: ShadowRoot } {
+  let host = document.getElementById(id);
+  if (!host) {
+    host = document.createElement('div');
+    host.id = id;
+    anchorEl.parentNode!.insertBefore(host, anchorEl.nextSibling);
+  }
+
+  const existing = (host as unknown as { _ccShadow?: ShadowRoot })._ccShadow;
+  if (existing) return { host, root: existing };
+
+  const root = host.attachShadow({ mode: 'open' });
+  (host as unknown as { _ccShadow: ShadowRoot })._ccShadow = root;
+  return { host, root };
+}
+
 export function removeShadowHost(id: string): void {
   const host = document.getElementById(id);
   if (host) host.remove();

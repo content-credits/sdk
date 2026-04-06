@@ -1,4 +1,5 @@
 import { createGate } from './gate.js';
+import type { Gate } from './gate.js';
 import { createPaywallRenderer } from './renderer.js';
 import { detectExtension } from '../extension/detector.js';
 import { createExtensionBridge } from '../extension/bridge.js';
@@ -16,9 +17,12 @@ export function createPaywall(
   config: ResolvedConfig,
   creditsApi: ReturnType<typeof createCreditsApi>,
   state: StateStore,
-  emitter: EventEmitter
+  emitter: EventEmitter,
+  existingGate?: Gate
 ) {
-  const gate = createGate({
+  // Accept a pre-created gate so the caller can call gate.hide() synchronously
+  // before any async work, preventing a flash of the full article content.
+  const gate = existingGate ?? createGate({
     selector: config.contentSelector,
     teaserParagraphs: config.teaserParagraphs,
   });
