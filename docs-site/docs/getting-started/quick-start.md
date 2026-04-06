@@ -72,15 +72,21 @@ Add this inline script **after** the SDK `<script>` tag:
 
 Open your page in a browser. You should see:
 
-- The first 2 paragraphs of your article are visible
-- The `#premium-content` section is hidden
-- A paywall overlay appears over the hidden content
-- A comment widget button appears in the bottom-right corner
+- The first 2 paragraphs visible with a gradient fade at the bottom
+- An **inline paywall panel** directly below the teaser (not a modal dialog)
+- A comment widget button in the bottom-right corner
 
 :::info Localhost note
 The production API (`api.contentcredits.com`) only accepts requests from **registered publisher domains**. If you're testing on `localhost`, API calls will fail with CORS errors.
 
 Use [ngrok](https://ngrok.com) to expose your local server on a public URL, then register that URL in your dashboard.
+:::
+
+:::tip Background colour
+The gradient fade defaults to white. If your page has a different background, set the `--cc-bg` CSS variable on the content element:
+```html
+<div id="premium-content" style="--cc-bg: #f3f4f6;">
+```
 :::
 
 ---

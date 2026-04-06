@@ -94,85 +94,81 @@ export function useContentCredits(config: SDKConfig) {
 }
 ```
 
-Usage:
-
-```tsx
-function ArticlePage({ apiKey }) {
-  const { on } = useContentCredits({
-    apiKey,
-    contentSelector: '#premium-content',
-  });
-
-  useEffect(() => {
-    const unsub = on('auth:login', ({ user }) => {
-      console.log('Logged in:', user.email);
-    });
-    return unsub;
-  }, [on]);
-
-  return (
-    <article>
-      <div id="premium-content">...</div>
-    </article>
-  );
-}
-```
-
 ---
 
 ## Next.js (App Router)
 
-The SDK uses browser APIs (`window`, `document`, `sessionStorage`) so it must be initialised **client-side only**. Use the `'use client'` directive and `useEffect`:
+The SDK uses browser APIs (`window`, `document`, `sessionStorage`) so it **cannot run during SSR**. Use a dynamic `import()` inside `useEffect` — this prevents the module from being evaluated by Node.js during prerendering.
+
+### Recommended: `PremiumGate` component with SSR flash prevention
+
+The `<style>` tag below is server-rendered, so content beyond the teaser is hidden **at HTML parse time** — before any JavaScript runs. This eliminates the flash of full content that would otherwise appear while the SDK bundle loads.
 
 ```tsx
 // components/PremiumGate.tsx
 'use client';
 
-import { useEffect } from 'react';
-import { ContentCredits } from '@contentcredits/sdk';
+import { useEffect, useRef } from 'react';
 
 interface PremiumGateProps {
   apiKey: string;
-  selector?: string;
   children: React.ReactNode;
+  teaserParagraphs?: number;
 }
+
+const GATE_STYLE_ID = 'cc-premium-gate-style';
 
 export function PremiumGate({
   apiKey,
-  selector = '#premium-content',
   children,
+  teaserParagraphs = 2,
 }: PremiumGateProps) {
+  const ccRef = useRef<{ destroy: () => void } | null>(null);
+
   useEffect(() => {
-    const cc = ContentCredits.init({
-      apiKey,
-      contentSelector: selector,
-      enableComments: true,
+    // Dynamic import prevents SSR from executing the SDK (no `document` in Node)
+    import('@contentcredits/sdk').then(({ ContentCredits }) => {
+      ccRef.current = ContentCredits.init({
+        apiKey,
+        contentSelector: '#premium-content',
+        teaserParagraphs,
+        onAccessGranted: () => {
+          // Remove the SSR hide-style once access is confirmed
+          document.getElementById(GATE_STYLE_ID)?.remove();
+        },
+      });
     });
 
-    return () => cc.destroy();
-  }, [apiKey, selector]);
+    return () => { ccRef.current?.destroy(); };
+  }, [apiKey, teaserParagraphs]);
 
   return (
-    <div id="premium-content">
-      {children}
-    </div>
+    <>
+      {/* Server-rendered — hides content at HTML parse time before JS runs */}
+      <style id={GATE_STYLE_ID}>{`
+        #premium-content > *:nth-child(n+${teaserParagraphs + 1}) { display: none !important; }
+      `}</style>
+      {/* --cc-bg controls the gradient fade colour — match your background */}
+      <div id="premium-content" style={{ '--cc-bg': '#fff' } as React.CSSProperties}>
+        {children}
+      </div>
+    </>
   );
 }
 ```
 
-Then in your page component:
+Then in your page:
 
 ```tsx
 // app/articles/[slug]/page.tsx
 import { PremiumGate } from '@/components/PremiumGate';
 
-export default function ArticlePage({ params }) {
+export default async function ArticlePage({ params }) {
   const article = await getArticle(params.slug);
 
   return (
     <main>
       <h1>{article.title}</h1>
-      <p>{article.teaser}</p>
 
       {article.isPremium ? (
         <PremiumGate apiKey={process.env.NEXT_PUBLIC_CC_API_KEY!}>
@@ -186,32 +182,38 @@ export default function ArticlePage({ params }) {
 }
 ```
 
+:::info Why dynamic import?
+Top-level `import { ContentCredits } from '@contentcredits/sdk'` will fail during Next.js prerendering because the SDK immediately accesses `document` and `window` when the module is loaded — which don't exist in Node.js. Using `import()` inside `useEffect` defers module evaluation to the browser.
+:::
+
 ---
 
 ## Next.js (Pages Router)
 
 ```tsx
 // pages/articles/[slug].tsx
-import { useEffect } from 'react';
-import { ContentCredits } from '@contentcredits/sdk';
+import { useEffect, useRef } from 'react';
 import type { GetServerSideProps } from 'next';
 
 export default function ArticlePage({ article, apiKey }) {
+  const ccRef = useRef(null);
+
   useEffect(() => {
     if (!article.isPremium) return;
 
-    const cc = ContentCredits.init({
-      apiKey,
-      contentSelector: '#premium-content',
+    import('@contentcredits/sdk').then(({ ContentCredits }) => {
+      ccRef.current = ContentCredits.init({
+        apiKey,
+        contentSelector: '#premium-content',
+      });
     });
 
-    return () => cc.destroy();
+    return () => { ccRef.current?.destroy(); };
   }, [article.isPremium, apiKey]);
 
   return (
     <article>
       <h1>{article.title}</h1>
-      <p>{article.teaser}</p>
       <div
         id="premium-content"
         dangerouslySetInnerHTML={{ __html: article.body }}
@@ -243,7 +245,7 @@ import type {
 
 ## Environment variable for API key
 
-Never hardcode API keys in client-side code that gets committed to version control. Use environment variables:
+Never hardcode API keys in source files. Use environment variables:
 
 ```bash
 # .env.local
