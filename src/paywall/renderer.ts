@@ -1,4 +1,4 @@
-import { createShadowHost, injectStyles, removeShadowHost } from '../ui/shadow.js';
+import { createInlineShadowHost, injectStyles, removeShadowHost } from '../ui/shadow.js';
 import { getPaywallStyles } from '../ui/styles.js';
 import { el, setTextContent } from '../ui/sanitize.js';
 import type { ResolvedConfig } from '../types/index.js';
@@ -24,19 +24,18 @@ export function createPaywallRenderer(config: ResolvedConfig) {
   let overlay: HTMLElement | null = null;
 
   function init(): void {
-    const { root: shadowRoot } = createShadowHost(HOST_ID);
+    // Insert the shadow host immediately after the content element so the
+    // paywall panel flows inline below the teaser — no modal, no backdrop.
+    const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
+    if (!contentEl) return;
+
+    const { root: shadowRoot } = createInlineShadowHost(HOST_ID, contentEl);
     root = shadowRoot;
     injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
 
-    // Backdrop: fixed full-viewport flex container — centers the overlay and
-    // blocks interaction with the page behind it (pointer-events: all in CSS).
-    const backdrop = el('div');
-    backdrop.className = 'cc-paywall-backdrop';
-    root.appendChild(backdrop);
-
     overlay = el('div');
-    overlay.className = 'cc-paywall-overlay';
-    backdrop.appendChild(overlay);
+    overlay.className = 'cc-paywall-inline';
+    root.appendChild(overlay);
   }
 
   function render(
@@ -44,6 +43,9 @@ export function createPaywallRenderer(config: ResolvedConfig) {
     callbacks: PaywallRendererCallbacks,
     meta?: { requiredCredits?: number | null; creditBalance?: number | null }
   ): void {
+    // During the initial access check the content is already hidden by the
+    // gate — no need to show a spinner in the paywall slot.
+    if (state === 'checking') return;
     if (!overlay) init();
     if (!overlay) return;
 
@@ -51,9 +53,6 @@ export function createPaywallRenderer(config: ResolvedConfig) {
     while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
 
     switch (state) {
-      case 'checking':
-        renderChecking(overlay);
-        break;
       case 'login':
         renderLogin(overlay, callbacks);
         break;
@@ -70,23 +69,6 @@ export function createPaywallRenderer(config: ResolvedConfig) {
         destroy();
         break;
     }
-  }
-
-  function renderChecking(parent: HTMLElement): void {
-    const spinner = el('div');
-    spinner.className = 'cc-spinner';
-    spinner.style.margin = '0 auto 12px';
-    spinner.style.width = '24px';
-    spinner.style.height = '24px';
-    spinner.style.borderWidth = '2px';
-    spinner.style.borderColor = '#e5e7eb';
-    spinner.style.borderTopColor = config.theme.primaryColor;
-
-    const text = el('p', 'Checking access...');
-    text.style.cssText = 'font-size:14px;color:#6b7280;text-align:center;font-family:' + config.theme.fontFamily;
-
-    parent.appendChild(spinner);
-    parent.appendChild(text);
   }
 
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {

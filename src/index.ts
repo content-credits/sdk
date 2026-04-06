@@ -21,6 +21,7 @@ import { createApiClient } from './api/client.js';
 import { createCreditsApi } from './api/credits.js';
 import { createCommentsApi } from './api/comments.js';
 import { createPaywall } from './paywall/index.js';
+import { createGate } from './paywall/gate.js';
 import { createComments } from './comments/index.js';
 import { tokenStorage } from './auth/storage.js';
 import { consumeTokenFromUrl } from './auth/popup.js';
@@ -77,19 +78,30 @@ export class ContentCredits {
     // 1. Consume any token that arrived in the URL (mobile redirect flow)
     consumeTokenFromUrl();
 
-    // 2. If no access token in memory/session, attempt a silent refresh.
+    // 2. Hide premium content immediately (synchronous) before any async work.
+    //    This prevents the flash of full article content that would otherwise
+    //    appear during the token-refresh and access-check network round-trips.
+    const earlyGate = createGate({
+      selector: this.config.contentSelector,
+      teaserParagraphs: this.config.teaserParagraphs,
+    });
+    earlyGate.hide();
+
+    // 3. If no access token in memory/session, attempt a silent refresh.
     //    This runs on every new browser session (after the browser was closed)
-    //    and silently re-authenticates the user using their stored refresh token
-    //    — no popup, no visible delay, no paywall flash.
+    //    and silently re-authenticates the user using their stored refresh token.
     if (!tokenStorage.has()) {
       await tryRefreshSession(this.config.apiBaseUrl);
     }
 
+    // Pass the pre-created gate so createPaywall reuses the same instance
+    // (and its hiddenNodes list) rather than creating a second one.
     this.paywallModule = createPaywall(
       this.config,
       this.creditsApi,
       this.state,
-      this.emitter
+      this.emitter,
+      earlyGate
     );
 
     if (this.config.enableComments) {

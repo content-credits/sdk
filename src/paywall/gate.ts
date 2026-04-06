@@ -60,6 +60,21 @@ export function createGate(options: GateOptions): Gate {
 
     contentEl.setAttribute(GATE_ATTR, 'true');
     gated = true;
+
+    // Add a gradient fade at the bottom of the visible teaser so the cutoff
+    // looks intentional rather than abrupt.
+    if (!contentEl.querySelector('[data-cc-fade]')) {
+      const prevPos = contentEl.style.position;
+      if (!prevPos || prevPos === 'static') contentEl.style.position = 'relative';
+      const fadeEl = document.createElement('div');
+      fadeEl.setAttribute('data-cc-fade', 'true');
+      fadeEl.style.cssText =
+        'position:absolute;bottom:0;left:0;width:100%;height:160px;' +
+        'background:linear-gradient(to bottom,transparent 0%,var(--cc-bg,#fff) 100%);' +
+        'pointer-events:none;z-index:1;';
+      contentEl.appendChild(fadeEl);
+    }
+
     return true;
   }
 
@@ -72,6 +87,10 @@ export function createGate(options: GateOptions): Gate {
         n.removeAttribute('data-cc-hidden');
       }
     });
+
+    // Remove gradient fade
+    const fadeEl = contentEl?.querySelector('[data-cc-fade]');
+    if (fadeEl) fadeEl.remove();
 
     hiddenNodes = [];
     contentEl?.removeAttribute(GATE_ATTR);

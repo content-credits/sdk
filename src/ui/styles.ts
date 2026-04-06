@@ -2,56 +2,27 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
   return `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    .cc-paywall-gate {
-      position: relative;
+    /* Inline paywall panel — sits below the teaser content in the page flow */
+    .cc-paywall-inline {
       width: 100%;
-    }
-
-    .cc-teaser-fade {
-      position: relative;
-    }
-    .cc-teaser-fade::after {
-      content: '';
-      position: absolute;
-      bottom: 0; left: 0; width: 100%;
-      height: 120px;
-      background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,1) 100%);
-      pointer-events: none;
-    }
-
-    /* Full-viewport backdrop — centers the overlay and blocks background clicks */
-    .cc-paywall-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.45);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      pointer-events: all;
-    }
-
-    .cc-paywall-overlay {
+      padding: 36px 24px 32px;
       background: #fff;
       border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 32px 24px;
-      width: 100%;
-      max-width: 480px;
+      border-top: 3px solid ${primaryColor};
+      border-radius: 0 0 12px 12px;
       text-align: center;
       font-family: ${fontFamily};
-      box-shadow: 0 8px 40px rgba(0,0,0,0.18);
-      pointer-events: all;
+      box-sizing: border-box;
     }
 
-    .cc-paywall-overlay h2 {
+    .cc-paywall-inline h2 {
       font-size: 20px;
       font-weight: 700;
       color: #111827;
       margin-bottom: 8px;
     }
 
-    .cc-paywall-overlay p {
+    .cc-paywall-inline p {
       font-size: 14px;
       color: #6b7280;
       margin-bottom: 24px;
