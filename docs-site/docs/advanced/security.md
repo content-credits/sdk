@@ -18,8 +18,8 @@ The SDK uses a **three-layer model** that separates two different tokens with di
 
 | | Access token | Refresh token |
 |---|---|---|
-| **What it is** | Short-lived JWT | Long-lived opaque string |
-| **Lifetime** | ~15 minutes | ~30 days |
+| **What it is** | JWT | Long-lived opaque string |
+| **Lifetime** | 7 days | 30 days |
 | **Purpose** | Authorise every API call | Silently obtain a new access token |
 | **Stored in** | Memory + `sessionStorage` | `localStorage` |
 | **Survives browser close?** | No | Yes |
@@ -55,10 +55,10 @@ The refresh token lives in `localStorage` on the **publisher's domain** — this
 
 ### Refresh token rotation
 
-Every call to `/auth/refresh` returns a **new** refresh token and invalidates the old one. This means:
+Every call to `/auth/refresh` returns a **new** refresh token and immediately invalidates the old one. This means:
 
 - A stolen refresh token can only be used once before the legitimate user rotates it
-- The backend can detect anomalous re-use (two clients using the same token in quick succession) and revoke the entire session
+- If a token is used that has already been rotated (reuse detected), the backend treats it as a potential theft and **immediately revokes all active sessions for that user** — forcing a fresh login
 - There is no persistent credential that stays valid indefinitely
 
 ### Silent re-authentication flow
