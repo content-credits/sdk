@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
-import { ContentCredits } from "@contentcredits/sdk";
+import { useEffect, useRef } from "react";
 
 interface PremiumGateProps {
   apiKey: string;
@@ -11,22 +10,25 @@ interface PremiumGateProps {
 /**
  * Wraps premium article content with the Content Credits paywall.
  *
- * Must be a Client Component ("use client") because it uses useEffect
- * to initialise the SDK after the DOM is available.
- *
- * The SDK targets the #premium-content element and hides everything after
- * the configured teaser paragraphs until the reader purchases access.
+ * Must be a Client Component ("use client") because the SDK manipulates the DOM.
+ * The SDK is loaded via dynamic import inside useEffect so it never runs during
+ * Next.js SSG/SSR (which has no `document`).
  */
 export function PremiumGate({ apiKey, children }: PremiumGateProps) {
+  const ccRef = useRef<{ destroy: () => void } | null>(null);
+
   useEffect(() => {
-    const cc = ContentCredits.init({
-      apiKey,
-      contentSelector: "#premium-content",
-      teaserParagraphs: 2,
+    import("@contentcredits/sdk").then(({ ContentCredits }) => {
+      ccRef.current = ContentCredits.init({
+        apiKey,
+        contentSelector: "#premium-content",
+        teaserParagraphs: 2,
+      });
     });
 
-    // Clean up when navigating away (important for SPA-style navigation)
-    return () => cc.destroy();
+    return () => {
+      ccRef.current?.destroy();
+    };
   }, [apiKey]);
 
   return <div id="premium-content">{children}</div>;
