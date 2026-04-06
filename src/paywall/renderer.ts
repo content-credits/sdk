@@ -28,9 +28,15 @@ export function createPaywallRenderer(config: ResolvedConfig) {
     root = shadowRoot;
     injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
 
+    // Backdrop: fixed full-viewport flex container — centers the overlay and
+    // blocks interaction with the page behind it (pointer-events: all in CSS).
+    const backdrop = el('div');
+    backdrop.className = 'cc-paywall-backdrop';
+    root.appendChild(backdrop);
+
     overlay = el('div');
     overlay.className = 'cc-paywall-overlay';
-    root.appendChild(overlay);
+    backdrop.appendChild(overlay);
   }
 
   function render(
