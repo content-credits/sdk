@@ -19,16 +19,29 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       pointer-events: none;
     }
 
+    /* Full-viewport backdrop — centers the overlay and blocks background clicks */
+    .cc-paywall-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      pointer-events: all;
+    }
+
     .cc-paywall-overlay {
       background: #fff;
       border: 1px solid #e5e7eb;
       border-radius: 12px;
       padding: 32px 24px;
+      width: 100%;
       max-width: 480px;
-      margin: 24px auto;
       text-align: center;
       font-family: ${fontFamily};
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+      pointer-events: all;
     }
 
     .cc-paywall-overlay h2 {
