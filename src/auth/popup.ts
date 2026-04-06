@@ -42,6 +42,10 @@ export function scrubTokenFromUrl(): void {
  * Read and store a token that may have been placed in the current URL
  * (e.g. after a mobile redirect back from the accounts site).
  * Always scrubs the token from the URL after reading it.
+ *
+ * If we're running inside a popup window (window.opener exists), we notify
+ * the opener via postMessage and close ourselves — this prevents the popup
+ * from showing the full article page after a successful login redirect.
  */
 export function consumeTokenFromUrl(): string | null {
   try {
@@ -55,8 +59,26 @@ export function consumeTokenFromUrl(): string | null {
     if (refreshToken) {
       refreshTokenStorage.set(refreshToken);
     }
+
     if (token) {
       tokenStorage.set(token);
+
+      // If we're inside a popup (opened by openAuthPopup), notify the opener
+      // and close instead of rendering the page. This fixes the bug where the
+      // popup shows the blog article after the accounts redirect.
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage(
+            { type: 'cc_auth_callback', token, refreshToken: refreshToken ?? null },
+            window.location.origin
+          );
+        } catch {
+          // opener is cross-origin or restricted — fall through, URL polling will handle it
+        }
+        // Brief delay so the opener can process the message before the popup closes
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 300);
+      }
+
       return token;
     }
   } catch {
@@ -66,26 +88,64 @@ export function consumeTokenFromUrl(): string | null {
 }
 
 /**
- * Open a centered auth popup and poll for the token callback.
+ * Open a centered auth popup and wait for the token callback.
+ *
+ * Primary path: listens for a postMessage from the popup page (sent by
+ * consumeTokenFromUrl when the accounts redirect lands on our origin).
+ *
+ * Fallback path: polls popup.location.href every 200 ms for cases where
+ * postMessage isn't available (e.g. some mobile browsers, extensions).
+ *
  * Returns a promise that resolves with the token when login completes,
  * or null if the popup is closed without completing login.
  */
 export function openAuthPopup(authUrl: string): Promise<string | null> {
   return new Promise(resolve => {
     let popup: Window | null = null;
+    let settled = false;
+
+    function finish(token: string | null): void {
+      if (settled) return;
+      settled = true;
+      clearInterval(timer);
+      window.removeEventListener('message', onMessage);
+      resolve(token);
+    }
+
+    // ── Primary: postMessage from popup ───────────────────────────────────
+    function onMessage(event: MessageEvent): void {
+      // Only accept messages from our own origin
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'cc_auth_callback') return;
+
+      const token = event.data.token as string | undefined;
+      const refreshToken = event.data.refreshToken as string | null | undefined;
+
+      if (!token) return;
+
+      tokenStorage.set(token);
+      if (refreshToken) refreshTokenStorage.set(refreshToken);
+      try { popup?.close(); } catch { /* ignore */ }
+      finish(token);
+    }
+
+    window.addEventListener('message', onMessage);
 
     try {
       popup = window.open(authUrl, POPUP_NAME, centeredSpecs());
     } catch {
-      // popup blocked — fall through to null
-    }
-
-    // Popup blocked
-    if (!popup || popup.closed) {
+      window.removeEventListener('message', onMessage);
       resolve(null);
       return;
     }
 
+    if (!popup || popup.closed) {
+      window.removeEventListener('message', onMessage);
+      resolve(null);
+      return;
+    }
+
+    // ── Fallback: URL polling ─────────────────────────────────────────────
     const POLL_MS = 200;
     const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes
     let elapsed = 0;
@@ -94,15 +154,13 @@ export function openAuthPopup(authUrl: string): Promise<string | null> {
       elapsed += POLL_MS;
 
       if (!popup || popup.closed) {
-        clearInterval(timer);
-        resolve(tokenStorage.get()); // may have been set just before close
+        finish(tokenStorage.get());
         return;
       }
 
       if (elapsed > MAX_WAIT_MS) {
-        clearInterval(timer);
         try { popup.close(); } catch { /* ignore */ }
-        resolve(null);
+        finish(null);
         return;
       }
 
@@ -115,12 +173,9 @@ export function openAuthPopup(authUrl: string): Promise<string | null> {
           const refreshToken = params.get('refresh_token') ?? params.get('cc_refresh_token');
           if (token) {
             tokenStorage.set(token);
-            if (refreshToken) {
-              refreshTokenStorage.set(refreshToken);
-            }
-            clearInterval(timer);
+            if (refreshToken) refreshTokenStorage.set(refreshToken);
             try { popup.close(); } catch { /* ignore */ }
-            resolve(token);
+            finish(token);
           }
         }
       } catch {
