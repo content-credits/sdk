@@ -10,145 +10,103 @@ All configuration is passed to `ContentCredits.init()` as a plain JavaScript obj
 
 ```ts
 ContentCredits.init({
-  apiKey: 'pub_YOUR_API_KEY',           // required
-  contentSelector: '#premium-content',  // optional (default: '.cc-premium-content')
-  teaserParagraphs: 2,                  // optional (default: 2)
-  enableComments: true,                 // optional (default: true)
-  articleUrl: window.location.href,     // optional (default: current URL)
+  // Required
+  apiKey: 'pub_YOUR_API_KEY',
+
+  // Core options
+  contentSelector: '#premium-content',
+  teaserParagraphs: 2,
+  enableComments: true,
+  articleUrl: window.location.href,
   theme: {
     primaryColor: '#44C678',
     fontFamily: 'Georgia, serif',
   },
-  onAccessGranted: () => {
-    console.log('Reader unlocked the article!');
-  },
   debug: false,
+
+  // Headless mode (no built-in UI)
+  headless: false,
+
+  // Callbacks
+  onAccessGranted: () => { },
+  onStateChange: (state) => { },
+  onLoginRequired: () => { },
+  onPurchaseRequired: ({ requiredCredits, creditBalance }) => { },
+  onInsufficientCredits: ({ required, available }) => { },
+  onPurchased: ({ creditsSpent, remainingBalance }) => { },
+  onUserLogin: (user) => { },
+  onUserLogout: () => { },
+  onError: ({ message }) => { },
+  onReady: (state) => { },
 });
 ```
 
 ---
 
-## Full option reference
+## Core options
 
-### `apiKey` · `string` · **required**
-
-Your publisher API key from the Content Credits dashboard. Always starts with `pub_`.
-
-```js
-apiKey: 'pub_abc123def456ghi789'
-```
-
----
-
-### `contentSelector` · `string` · default `'.cc-premium-content'`
-
-A **CSS selector** that identifies the element(s) containing your premium content. The SDK hides all matching elements until the reader pays.
-
-```js
-contentSelector: '#premium-section'
-// or
-contentSelector: '.paywalled-content'
-// or
-contentSelector: 'article > section:last-child'
-```
-
-Multiple matching elements are all hidden simultaneously.
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `apiKey` | `string` | — | **Required.** Publisher API key (`pub_...`) |
+| `contentSelector` | `string` | `'.cc-premium-content'` | CSS selector for the element to gate |
+| `teaserParagraphs` | `number` | `2` | Visible paragraphs before the paywall |
+| `enableComments` | `boolean` | `true` | Show the comment widget |
+| `articleUrl` | `string` | `window.location.href` | Canonical URL for the article |
+| `theme.primaryColor` | `string` | `'#44C678'` | Brand colour for buttons and accents |
+| `theme.fontFamily` | `string` | System UI | Font for all SDK text |
+| `paywallTemplate` | `string` | — | Custom HTML for the paywall overlay |
+| `extensionId` | `string` | Built-in ID | Override the Chrome extension ID |
+| `debug` | `boolean` | `false` | Verbose console logging |
 
 ---
 
-### `teaserParagraphs` · `number` · default `2`
+## Headless mode
 
-How many `<p>` elements inside the **gated element** to show before it gets hidden. This lets readers see a preview before the paywall kicks in.
+Set `headless: true` to disable **all** built-in DOM manipulation and UI rendering. The SDK becomes a pure logic layer — it runs the access check, manages auth, and fires callbacks, but never hides content or injects UI.
 
 ```js
-teaserParagraphs: 3   // show 3 paragraphs, hide the rest
-teaserParagraphs: 0   // hide the entire element immediately
+ContentCredits.init({
+  apiKey: 'pub_YOUR_KEY',
+  headless: true,
+  onLoginRequired() { /* show your login UI */ },
+  onPurchaseRequired({ requiredCredits }) { /* show your unlock UI */ },
+  onAccessGranted() { /* reveal your content */ },
+});
 ```
 
-:::info How teaser paragraphs work
-The SDK counts `<p>` elements that are **direct or shallow children** of the gated element. If you have `teaserParagraphs: 2`, the first 2 paragraphs remain visible and the rest are hidden. The paywall overlay appears at the boundary.
+See the [Headless mode guide](/integration-guides/react#headless-mode--fully-custom-ui) for complete examples.
+
+---
+
+## Callbacks
+
+Callbacks fire in both default and headless mode. In headless mode they are your only UI triggers — the built-in overlay never appears.
+
+| Callback | Fires when |
+|---|---|
+| `onAccessGranted()` | Access confirmed (existing or just purchased) |
+| `onStateChange(state)` | Any state field changes — use for reactive UI |
+| `onReady(state)` | First access check complete |
+| `onLoginRequired()` | Paywall hit, user not logged in |
+| `onPurchaseRequired({ requiredCredits, creditBalance })` | Logged in, article not purchased |
+| `onInsufficientCredits({ required, available })` | Balance too low |
+| `onPurchased({ creditsSpent, remainingBalance })` | Purchase succeeded |
+| `onUserLogin(user)` | User authenticated |
+| `onUserLogout()` | Session ended |
+| `onError({ message, error? })` | Any SDK error |
+
+:::tip Events vs callbacks
+Callbacks in the config object and events via `cc.on(...)` cover the same moments. Use whichever fits your code style — they work identically. The full event list is in the [Events reference](/api-reference/events).
 :::
-
----
-
-### `enableComments` · `boolean` · default `true`
-
-Whether to activate the comment system. When `true`, a floating widget button appears in the bottom-right corner of the page.
-
-```js
-enableComments: false   // disable comments entirely
-```
-
----
-
-### `articleUrl` · `string` · default `window.location.href`
-
-The canonical URL of the article. Used to look up the article in the Content Credits system. Only set this manually if your canonical URL differs from the browser's current URL (e.g. in SPAs or when using query parameters that shouldn't be part of the article identity).
-
-```js
-articleUrl: 'https://yoursite.com/articles/the-future-of-publishing'
-```
-
----
-
-### `theme` · `object` · optional
-
-Visual customisation for all SDK UI (paywall overlay, comment panel, widget button).
-
-```js
-theme: {
-  primaryColor: '#0066cc',    // brand colour for buttons and accents
-  fontFamily: 'Georgia, serif', // font for all SDK text
-}
-```
-
-| Property | Type | Default |
-|----------|------|---------|
-| `primaryColor` | `string` (CSS colour) | `'#44C678'` |
-| `fontFamily` | `string` (CSS font stack) | System UI sans-serif |
-
----
-
-### `onAccessGranted` · `() => void` · optional
-
-A callback that fires the moment the reader gains access to the article (either because they already purchased it, or just bought it now). Use this to trigger analytics events, remove a loading state, etc.
-
-```js
-onAccessGranted: () => {
-  analytics.track('article_unlocked');
-}
-```
-
-This is equivalent to listening to the `'paywall:hidden'` event.
-
----
-
-### `extensionId` · `string` · optional
-
-Override the Chrome extension ID the SDK looks for when detecting the Content Credits extension. Only needed if you're using a custom-built version of the extension.
-
-```js
-extensionId: 'abcdefghijklmnopqrstuvwxyz123456'
-```
-
----
-
-### `debug` · `boolean` · default `false`
-
-When `true`, the SDK logs verbose messages to the browser console — useful for development and troubleshooting.
-
-```js
-debug: true
-```
 
 ---
 
 ## Data attribute equivalents (CDN auto-init)
 
-When using the CDN `<script>` tag, every option can be set as a `data-*` attribute:
+When using the CDN `<script>` tag, core options can be set as `data-*` attributes:
 
 | JS option | `data-*` attribute |
-|-----------|-------------------|
+|---|---|
 | `apiKey` | `data-api-key` |
 | `contentSelector` | `data-content-selector` |
 | `teaserParagraphs` | `data-teaser-paragraphs` |
@@ -162,10 +120,15 @@ When using the CDN `<script>` tag, every option can be set as a `data-*` attribu
   data-content-selector="#premium-content"
   data-teaser-paragraphs="3"
   data-enable-comments="true"
-  data-debug="false"
 ></script>
 ```
 
 :::note
-`theme`, `articleUrl`, `extensionId`, and `onAccessGranted` can only be set via the JavaScript API — they have no data attribute equivalent.
+`theme`, `articleUrl`, `extensionId`, `paywallTemplate`, `headless`, and all callback options are JavaScript-only — they have no `data-*` equivalent.
 :::
+
+---
+
+## Full option reference
+
+For detailed descriptions of every option including types, defaults, and edge cases, see the [Configuration Reference](/api-reference/configuration).

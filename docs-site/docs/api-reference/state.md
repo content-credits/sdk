@@ -93,7 +93,39 @@ The number of credits required to unlock the current article, or `null` if not y
 
 ## Reading state
 
-State is a snapshot — it does not auto-update your UI. Read it in response to events:
+### Option A — `onStateChange` config callback
+
+Pass `onStateChange` in your `init()` config to receive state on every change. This is the simplest approach for headless mode.
+
+```js
+ContentCredits.init({
+  apiKey: 'pub_YOUR_KEY',
+  headless: true,
+  onStateChange: (state) => {
+    document.getElementById('spinner').hidden = !state.isLoading;
+    document.getElementById('content').hidden = !state.hasAccess;
+  },
+});
+```
+
+### Option B — `cc.subscribe(fn)`
+
+Call `subscribe()` on the returned instance. Useful when you can't pass callbacks at init time (e.g. inside a React `useEffect`).
+
+```js
+const cc = ContentCredits.init({ apiKey: 'pub_YOUR_KEY', headless: true });
+
+const unsubscribe = cc.subscribe((state) => {
+  renderPaywall(state);
+});
+
+// Later:
+unsubscribe();
+```
+
+### Option C — `cc.getState()` snapshot
+
+Use `getState()` to read the current state at a specific moment — for example, inside an event handler.
 
 ```js
 cc.on('ready', () => {
@@ -106,12 +138,9 @@ cc.on('auth:login', () => {
   const state = cc.getState();
   updateHeader(state.user);
 });
-
-cc.on('paywall:hidden', () => {
-  const state = cc.getState();
-  console.log('Content unlocked for:', state.user?.email);
-});
 ```
+
+`getState()` returns a snapshot; it does not subscribe to future changes.
 
 ---
 
@@ -121,7 +150,7 @@ Before the `ready` event, all fields are in their default/unknown state:
 
 ```json
 {
-  "isLoading": true,
+  "isLoading": false,
   "isLoaded": false,
   "isLoggedIn": false,
   "hasAccess": false,
