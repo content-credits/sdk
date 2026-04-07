@@ -74,7 +74,7 @@ ContentCredits.init({
 });
 ```
 
-See the [Headless mode guide](/integration-guides/react#headless-mode--fully-custom-ui) for complete examples.
+See the [Headless mode guide](/integration-guides/headless) for complete examples.
 
 ---
 

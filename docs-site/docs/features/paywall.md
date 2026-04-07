@@ -228,7 +228,7 @@ document.getElementById('btn-login').onclick    = () => cc.login();
 document.getElementById('btn-purchase').onclick = () => cc.purchase();
 ```
 
-See the [Headless mode guide](/integration-guides/react#headless-mode--fully-custom-ui) for complete examples including vanilla JS, React, and Next.js.
+See the [Headless mode guide](/integration-guides/headless) for complete examples including vanilla JS, React, and Next.js.
 
 ---
 

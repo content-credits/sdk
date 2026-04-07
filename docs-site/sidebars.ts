@@ -35,6 +35,7 @@ const sidebars: SidebarsConfig = {
         'integration-guides/html',
         'integration-guides/wordpress',
         'integration-guides/react',
+        'integration-guides/headless',
       ],
     },
     {
