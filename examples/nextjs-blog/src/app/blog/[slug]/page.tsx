@@ -59,10 +59,6 @@ export default function ArticlePage({
     );
   });
 
-  const articleBody = (
-    <div className="prose-content">{bodyBlocks}</div>
-  );
-
   return (
     <article className="max-w-2xl mx-auto">
       {/* Back link */}
@@ -98,9 +94,9 @@ export default function ArticlePage({
 
       {/* Body — gated or free */}
       {article.isPremium ? (
-        <PremiumGate apiKey={apiKey}>{articleBody}</PremiumGate>
+        <PremiumGate apiKey={apiKey} blocks={bodyBlocks} />
       ) : (
-        articleBody
+        <div className="prose-content">{bodyBlocks}</div>
       )}
     </article>
   );
