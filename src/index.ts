@@ -78,7 +78,27 @@ export class ContentCredits {
     // 1. Consume any token that arrived in the URL (mobile redirect flow)
     consumeTokenFromUrl();
 
-    // 2. Hide premium content immediately (synchronous) before any async work.
+    // 2. Wire config-level callbacks so developers don't need separate on() calls.
+    if (this.config.onStateChange) {
+      this.state.subscribe(this.config.onStateChange);
+    }
+    if (this.config.onReady) {
+      this.emitter.on('ready', ({ state }) => this.config.onReady!(state));
+    }
+    if (this.config.onPurchased) {
+      this.emitter.on('article:purchased', (payload) => this.config.onPurchased!(payload));
+    }
+    if (this.config.onUserLogin) {
+      this.emitter.on('auth:login', ({ user }) => this.config.onUserLogin!(user));
+    }
+    if (this.config.onUserLogout) {
+      this.emitter.on('auth:logout', () => this.config.onUserLogout!());
+    }
+    if (this.config.onError) {
+      this.emitter.on('error', (payload) => this.config.onError!(payload));
+    }
+
+    // 3. Hide premium content immediately (synchronous) before any async work.
     //    This prevents the flash of full article content that would otherwise
     //    appear during the token-refresh and access-check network round-trips.
     //    Skipped in headless mode — the host app owns all DOM manipulation.
@@ -88,14 +108,14 @@ export class ContentCredits {
     });
     if (!this.config.headless) earlyGate.hide();
 
-    // 3. If no access token in memory/session, attempt a silent refresh.
+    // 4. If no access token in memory/session, attempt a silent refresh.
     //    This runs on every new browser session (after the browser was closed)
     //    and silently re-authenticates the user using their stored refresh token.
     if (!tokenStorage.has()) {
       await tryRefreshSession(this.config.apiBaseUrl);
     }
 
-    // Pass the pre-created gate so createPaywall reuses the same instance
+    // 5. Pass the pre-created gate so createPaywall reuses the same instance
     // (and its hiddenNodes list) rather than creating a second one.
     this.paywallModule = createPaywall(
       this.config,

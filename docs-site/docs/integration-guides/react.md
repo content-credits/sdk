@@ -225,239 +225,359 @@ export default function ArticlePage({ article, apiKey }) {
 
 ---
 
----
+## Headless mode — fully custom UI
 
-## Headless mode — bring your own UI
+Set `headless: true` and the SDK becomes a pure logic layer: it never touches the DOM, never injects any UI, and never hides or shows anything. You get callbacks for every paywall state change and methods to trigger every action. Your design, your markup, your framework.
 
-By default the SDK injects its own paywall overlay and hides/reveals the premium content element for you. If you want **full control** over the UI — your own paywall design, your own show/hide logic, your own paragraph clamping — use **headless mode**.
+### How it works
 
-In headless mode the SDK:
-
-- **Does not touch the DOM** (no `display: none`, no gradient fade, no overlay)
-- Exposes reactive **state** via `subscribe()` so your component re-renders on every change
-- Exposes **action methods** (`login()`, `purchase()`, `buyMoreCredits()`) you call from your own buttons
-
-### Headless state shape
-
-```ts
-interface SDKState {
-  isLoading: boolean;       // true while an access-check or purchase is in flight
-  isLoaded: boolean;        // true once the first access check has completed
-  isLoggedIn: boolean;      // true if the user has an active session
-  hasAccess: boolean;       // true if the user has purchased / has access
-  user: User | null;        // full user object when logged in
-  creditBalance: number | null;   // user's current credit balance
-  requiredCredits: number | null; // credits needed to unlock this article
-  isExtensionAvailable: boolean;
-}
+```
+SDK responsibilities (headless: true)       Your responsibilities
+────────────────────────────────────────    ────────────────────────────────────────
+✓ Detect extension / check token            ✓ Show / hide the premium content
+✓ Call the access-check API                 ✓ Render the paywall UI (login / purchase)
+✓ Run the login popup or redirect           ✓ Clamp or blur paragraphs
+✓ Run the purchase API call                 ✓ Show loading spinners
+✓ Fire callbacks at every state change      ✓ Handle errors in your own UI
 ```
 
-### React hook — `useContentCreditsHeadless`
+### Minimal setup — callbacks only
 
-```ts
-// hooks/useContentCreditsHeadless.ts
-import { useEffect, useRef, useState, useCallback } from 'react';
-import type { SDKState } from '@contentcredits/sdk';
-
-interface UseContentCreditsHeadlessReturn {
-  state: SDKState | null;
-  login: () => void;
-  purchase: () => void;
-  buyMoreCredits: () => void;
-}
-
-export function useContentCreditsHeadless(
-  apiKey: string,
-  articleUrl?: string
-): UseContentCreditsHeadlessReturn {
-  const sdkRef = useRef<import('@contentcredits/sdk').ContentCredits | null>(null);
-  const [state, setState] = useState<SDKState | null>(null);
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-
-    import('@contentcredits/sdk').then(({ ContentCredits }) => {
-      sdkRef.current = ContentCredits.init({
-        apiKey,
-        articleUrl,
-        headless: true,      // ← disable all built-in DOM/UI handling
-        enableComments: false,
-      });
-
-      // Subscribe to state changes — drives your UI reactively
-      unsubscribe = sdkRef.current.subscribe(setState);
-
-      // Seed with the current snapshot (before any change fires)
-      setState(sdkRef.current.getState());
-    });
-
-    return () => {
-      unsubscribe?.();
-      sdkRef.current?.destroy();
-      sdkRef.current = null;
-    };
-  }, [apiKey, articleUrl]);
-
-  const login = useCallback(() => { sdkRef.current?.login(); }, []);
-  const purchase = useCallback(() => { sdkRef.current?.purchase(); }, []);
-  const buyMoreCredits = useCallback(() => { sdkRef.current?.buyMoreCredits(); }, []);
-
-  return { state, login, purchase, buyMoreCredits };
-}
-```
-
-### Full Next.js example — custom paywall UI
-
-This example shows a custom paywall where **you** decide which paragraphs to show, render your own paywall card, and wire up your own buttons.
-
-```tsx
-// components/HeadlessPremiumArticle.tsx
-'use client';
-
-import { useContentCreditsHeadless } from '@/hooks/useContentCreditsHeadless';
-
-interface Props {
-  paragraphs: string[];   // article body split into paragraphs
-  teaserCount?: number;   // how many to show before the paywall
-  apiKey: string;
-}
-
-export function HeadlessPremiumArticle({ paragraphs, teaserCount = 2, apiKey }: Props) {
-  const { state, login, purchase, buyMoreCredits } = useContentCreditsHeadless(apiKey);
-
-  const isLocked = !state?.hasAccess;
-
-  return (
-    <div>
-      {/* Always show teaser paragraphs */}
-      {paragraphs.slice(0, teaserCount).map((p, i) => (
-        <p key={i}>{p}</p>
-      ))}
-
-      {/* Remaining paragraphs — hidden until access is granted */}
-      {!isLocked && paragraphs.slice(teaserCount).map((p, i) => (
-        <p key={i}>{p}</p>
-      ))}
-
-      {/* Your custom paywall card */}
-      {isLocked && (
-        <div className="my-paywall-card">
-          {!state?.isLoaded ? (
-            // Still loading — show a skeleton / nothing
-            <p>Loading…</p>
-          ) : !state.isLoggedIn ? (
-            // User is not logged in
-            <>
-              <h3>Read the full article</h3>
-              <p>Sign in with your Content Credits account to unlock.</p>
-              <button onClick={login} disabled={state.isLoading}>
-                {state.isLoading ? 'Opening login…' : 'Login & Unlock'}
-              </button>
-            </>
-          ) : state.creditBalance !== null &&
-            state.requiredCredits !== null &&
-            state.creditBalance < state.requiredCredits ? (
-            // Logged in but not enough credits
-            <>
-              <h3>Not enough credits</h3>
-              <p>
-                You have {state.creditBalance} credit{state.creditBalance !== 1 ? 's' : ''} but
-                this article costs {state.requiredCredits}.
-              </p>
-              <button onClick={buyMoreCredits}>Top up credits</button>
-            </>
-          ) : (
-            // Logged in, enough credits — show unlock button
-            <>
-              <h3>Unlock this article</h3>
-              {state.requiredCredits !== null && (
-                <p>Cost: {state.requiredCredits} credit{state.requiredCredits !== 1 ? 's' : ''}</p>
-              )}
-              <button onClick={purchase} disabled={state.isLoading}>
-                {state.isLoading ? 'Processing…' : 'Unlock now'}
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-```
-
-Usage in a page:
-
-```tsx
-// app/articles/[slug]/page.tsx
-import { HeadlessPremiumArticle } from '@/components/HeadlessPremiumArticle';
-
-export default async function ArticlePage({ params }) {
-  const article = await getArticle(params.slug);
-
-  // Split HTML body into paragraphs however suits your content structure
-  const paragraphs = article.body
-    .split(/<\/p>/i)
-    .map(p => p.replace(/<[^>]+>/g, '').trim())
-    .filter(Boolean);
-
-  return (
-    <main>
-      <h1>{article.title}</h1>
-      {article.isPremium ? (
-        <HeadlessPremiumArticle
-          paragraphs={paragraphs}
-          teaserCount={2}
-          apiKey={process.env.NEXT_PUBLIC_CC_API_KEY!}
-        />
-      ) : (
-        <div dangerouslySetInnerHTML={{ __html: article.body }} />
-      )}
-    </main>
-  );
-}
-```
-
-### Listening to events alongside headless mode
-
-`subscribe()` covers state-driven UI, but you can still use `on()` for side-effects like analytics:
-
-```ts
-sdkRef.current.on('article:purchased', ({ creditsSpent, remainingBalance }) => {
-  analytics.track('article_purchased', { creditsSpent, remainingBalance });
-});
-
-sdkRef.current.on('credits:insufficient', ({ required, available }) => {
-  console.warn(`Need ${required} credits, have ${available}`);
-});
-```
-
-### Plain JavaScript (no framework)
+Pass callbacks directly in `init()`. No `subscribe()` or `on()` calls needed.
 
 ```js
 const cc = ContentCredits.init({
   apiKey: 'pub_YOUR_KEY',
   headless: true,
+
+  // ── State-transition callbacks ───────────────────────────────────────────
+
+  onLoginRequired() {
+    // User hit the paywall and is not logged in.
+    // Show your login UI. Call cc.login() when they click the button.
+    showSection('ui-login');
+  },
+
+  onPurchaseRequired({ requiredCredits, creditBalance }) {
+    // User is logged in but hasn't bought this article.
+    // Show your purchase UI. Call cc.purchase() when they click the button.
+    document.getElementById('credit-cost').textContent = requiredCredits;
+    showSection('ui-purchase');
+  },
+
+  onInsufficientCredits({ required, available }) {
+    // User is logged in but their balance is too low.
+    // Show a top-up prompt. Call cc.buyMoreCredits() to open the dashboard.
+    document.getElementById('credits-needed').textContent = required - available;
+    showSection('ui-topup');
+  },
+
+  onAccessGranted() {
+    // Access confirmed — reveal your full content.
+    document.getElementById('premium-content').style.display = 'block';
+    document.getElementById('paywall').style.display = 'none';
+  },
+
+  // ── Optional ─────────────────────────────────────────────────────────────
+
+  onStateChange(state) {
+    // Fires on every state change. Useful for loading indicators.
+    document.getElementById('spinner').hidden = !state.isLoading;
+  },
+
+  onPurchased({ creditsSpent, remainingBalance }) {
+    analytics.track('article_purchased', { creditsSpent, remainingBalance });
+  },
+
+  onError({ message }) {
+    console.error('[CC]', message);
+  },
 });
 
-const unsubscribe = cc.subscribe((state) => {
-  document.getElementById('paywall').hidden = state.hasAccess;
-  document.getElementById('full-content').hidden = !state.hasAccess;
+// ── Action methods — call these from your own buttons ──────────────────────
 
-  document.getElementById('btn-login').hidden   = state.isLoggedIn || state.hasAccess;
-  document.getElementById('btn-unlock').hidden  = !state.isLoggedIn || state.hasAccess;
-  document.getElementById('btn-topup').hidden   = true;
+document.getElementById('btn-login').onclick    = () => cc.login();
+document.getElementById('btn-purchase').onclick = () => cc.purchase();
+document.getElementById('btn-topup').onclick    = () => cc.buyMoreCredits();
+```
 
-  if (state.isLoggedIn && !state.hasAccess &&
-      state.creditBalance !== null && state.requiredCredits !== null &&
-      state.creditBalance < state.requiredCredits) {
-    document.getElementById('btn-unlock').hidden = true;
-    document.getElementById('btn-topup').hidden  = false;
+That's it. No framework. No extra wiring.
+
+---
+
+### All callbacks reference
+
+These go directly in the `init()` config object.
+
+| Callback | When it fires | What to do |
+|---|---|---|
+| `onLoginRequired()` | Paywall hit, user not logged in | Show login UI → call `cc.login()` |
+| `onPurchaseRequired({ requiredCredits, creditBalance })` | Logged in, article not purchased | Show unlock UI → call `cc.purchase()` |
+| `onInsufficientCredits({ required, available })` | Logged in, balance too low | Show top-up UI → call `cc.buyMoreCredits()` |
+| `onAccessGranted()` | Access confirmed (existing or just purchased) | Reveal full content |
+| `onStateChange(state)` | Any state field changes | Drive loading spinners, reactive UI |
+| `onReady(state)` | First access check complete | Ideal for hiding initial skeletons |
+| `onPurchased({ creditsSpent, remainingBalance })` | Purchase succeeded | Analytics, balance display |
+| `onUserLogin(user)` | User authenticated | Update nav/avatar |
+| `onUserLogout()` | User logged out | Update nav |
+| `onError({ message, error? })` | Any SDK error | Show error toast |
+
+### All action methods reference
+
+Call these on the `cc` instance returned by `ContentCredits.init()`.
+
+| Method | What it does |
+|---|---|
+| `cc.login()` | Opens the login popup (desktop) or full-page redirect (mobile) |
+| `cc.purchase()` | Runs the article purchase flow. Auto-opens login first if needed |
+| `cc.buyMoreCredits()` | Opens the Content Credits credit top-up dashboard in a new tab |
+| `cc.checkAccess()` | Re-runs the access check manually (useful after navigation) |
+| `cc.getState()` | Returns a snapshot of the current `SDKState` |
+| `cc.subscribe(fn)` | Subscribe to state changes — alternative to `onStateChange` in config |
+| `cc.on(event, handler)` | Subscribe to a named event (see Events reference) |
+| `cc.destroy()` | Tear down the SDK instance (call on SPA navigation) |
+
+### `SDKState` reference
+
+Returned by `getState()` and passed to `onStateChange` and `subscribe()`.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `isLoading` | `boolean` | Access-check or purchase in flight |
+| `isLoaded` | `boolean` | First access check has completed |
+| `isLoggedIn` | `boolean` | User has a valid session |
+| `hasAccess` | `boolean` | User has access to this article |
+| `user` | `User \| null` | Full user object when logged in |
+| `creditBalance` | `number \| null` | User's current credit balance |
+| `requiredCredits` | `number \| null` | Credits needed to unlock this article |
+| `isExtensionAvailable` | `boolean` | Content Credits extension is installed |
+
+---
+
+### Complete vanilla JS example
+
+```html
+<!-- Your article markup — you control all of this -->
+<div id="article-teaser">
+  <p>First paragraph — always visible.</p>
+  <p>Second paragraph — always visible.</p>
+</div>
+
+<div id="article-full" style="display:none">
+  <p>Third paragraph…</p>
+  <p>Fourth paragraph…</p>
+  <!-- rest of article -->
+</div>
+
+<!-- Your paywall UI — one section per state -->
+<div id="paywall">
+  <div id="ui-loading"  class="paywall-state">Checking access…</div>
+
+  <div id="ui-login" class="paywall-state" style="display:none">
+    <h2>Read the full article</h2>
+    <p>Sign in with your Content Credits account to unlock.</p>
+    <button id="btn-login">Log in</button>
+  </div>
+
+  <div id="ui-purchase" class="paywall-state" style="display:none">
+    <h2>Unlock this article</h2>
+    <p>Cost: <strong id="credit-cost">—</strong> credits</p>
+    <p>Your balance: <strong id="credit-balance">—</strong></p>
+    <button id="btn-purchase">Unlock now</button>
+  </div>
+
+  <div id="ui-topup" class="paywall-state" style="display:none">
+    <h2>Not enough credits</h2>
+    <p>You need <strong id="credits-needed">—</strong> more credits.</p>
+    <button id="btn-topup">Buy credits</button>
+  </div>
+</div>
+
+<script src="https://cdn.contentcredits.com/sdk/v2/content-credits.umd.min.js"></script>
+<script>
+  function showState(id) {
+    ['ui-loading', 'ui-login', 'ui-purchase', 'ui-topup'].forEach(s => {
+      document.getElementById(s).style.display = s === id ? 'block' : 'none';
+    });
   }
-});
 
-document.getElementById('btn-login').addEventListener('click', () => cc.login());
-document.getElementById('btn-unlock').addEventListener('click', () => cc.purchase());
-document.getElementById('btn-topup').addEventListener('click', () => cc.buyMoreCredits());
+  const cc = ContentCreditsSDK.ContentCredits.init({
+    apiKey: 'pub_YOUR_KEY',
+    headless: true,
+
+    onLoginRequired() {
+      showState('ui-login');
+    },
+
+    onPurchaseRequired({ requiredCredits, creditBalance }) {
+      document.getElementById('credit-cost').textContent    = requiredCredits ?? '?';
+      document.getElementById('credit-balance').textContent = creditBalance   ?? '?';
+      showState('ui-purchase');
+    },
+
+    onInsufficientCredits({ required, available }) {
+      document.getElementById('credits-needed').textContent = required - available;
+      showState('ui-topup');
+    },
+
+    onAccessGranted() {
+      document.getElementById('paywall').style.display       = 'none';
+      document.getElementById('article-full').style.display  = 'block';
+    },
+
+    onStateChange(state) {
+      if (state.isLoading) showState('ui-loading');
+    },
+
+    onError({ message }) {
+      console.error('[ContentCredits]', message);
+    },
+  });
+
+  document.getElementById('btn-login').onclick    = () => cc.login();
+  document.getElementById('btn-purchase').onclick = () => cc.purchase();
+  document.getElementById('btn-topup').onclick    = () => cc.buyMoreCredits();
+</script>
+```
+
+---
+
+### React / Next.js — `useContentCredits` hook
+
+Use `onStateChange` in config to push state into React. All the logic stays in `init()` — the hook is just a thin bridge.
+
+```tsx
+// hooks/useContentCredits.ts
+'use client';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import type { SDKConfig, SDKState, ContentCredits } from '@contentcredits/sdk';
+
+export function useContentCredits(config: SDKConfig & { headless: true }) {
+  const sdkRef = useRef<ContentCredits | null>(null);
+  const [state, setState] = useState<SDKState | null>(null);
+
+  useEffect(() => {
+    import('@contentcredits/sdk').then(({ ContentCredits }) => {
+      sdkRef.current = ContentCredits.init({
+        ...config,
+        onStateChange: (s) => {
+          setState(s);
+          config.onStateChange?.(s);  // forward if caller also passed one
+        },
+      });
+      setState(sdkRef.current.getState());
+    });
+    return () => { sdkRef.current?.destroy(); sdkRef.current = null; };
+  }, [config.apiKey]);
+
+  return {
+    state,
+    login:          useCallback(() => sdkRef.current?.login(),          []),
+    purchase:       useCallback(() => sdkRef.current?.purchase(),       []),
+    buyMoreCredits: useCallback(() => sdkRef.current?.buyMoreCredits(), []),
+  };
+}
+```
+
+Component usage — the SDK calls your callbacks for navigation/side-effects; React state drives the render:
+
+```tsx
+// components/PremiumArticle.tsx
+'use client';
+import { useContentCredits } from '@/hooks/useContentCredits';
+
+interface Props {
+  content: string[];      // article paragraphs
+  teaserCount?: number;
+  apiKey: string;
+}
+
+export function PremiumArticle({ content, teaserCount = 2, apiKey }: Props) {
+  const { state, login, purchase, buyMoreCredits } = useContentCredits({
+    apiKey,
+    headless: true,
+    onPurchased: ({ creditsSpent }) => {
+      analytics.track('article_purchased', { creditsSpent });
+    },
+  });
+
+  const hasAccess     = state?.hasAccess   ?? false;
+  const isLoading     = state?.isLoading   ?? true;
+  const isLoaded      = state?.isLoaded    ?? false;
+  const isLoggedIn    = state?.isLoggedIn  ?? false;
+  const balance       = state?.creditBalance   ?? 0;
+  const cost          = state?.requiredCredits ?? 0;
+  const notEnough     = isLoggedIn && !hasAccess && balance < cost;
+
+  return (
+    <article>
+      {/* Teaser — always visible */}
+      {content.slice(0, teaserCount).map((p, i) => <p key={i}>{p}</p>)}
+
+      {/* Full content — only when access is granted */}
+      {hasAccess && content.slice(teaserCount).map((p, i) => <p key={i}>{p}</p>)}
+
+      {/* Paywall — hidden once access is granted */}
+      {!hasAccess && (
+        <div className="paywall">
+          {!isLoaded || isLoading ? (
+            <p>Checking access…</p>
+
+          ) : !isLoggedIn ? (
+            <>
+              <h3>Continue reading</h3>
+              <p>Log in to unlock this article with Content Credits.</p>
+              <button onClick={login}>Log in</button>
+            </>
+
+          ) : notEnough ? (
+            <>
+              <h3>Not enough credits</h3>
+              <p>Need {cost}, have {balance}.</p>
+              <button onClick={buyMoreCredits}>Top up</button>
+            </>
+
+          ) : (
+            <>
+              <h3>Unlock this article</h3>
+              <p>{cost} credit{cost !== 1 ? 's' : ''}</p>
+              <button onClick={purchase} disabled={isLoading}>
+                {isLoading ? 'Processing…' : 'Unlock'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+```
+
+Page:
+
+```tsx
+// app/articles/[slug]/page.tsx
+import { PremiumArticle } from '@/components/PremiumArticle';
+
+export default async function ArticlePage({ params }) {
+  const article = await getArticle(params.slug);
+  const paragraphs = article.body.split('\n').filter(Boolean);
+
+  return (
+    <main>
+      <h1>{article.title}</h1>
+      {article.isPremium ? (
+        <PremiumArticle
+          content={paragraphs}
+          teaserCount={2}
+          apiKey={process.env.NEXT_PUBLIC_CC_API_KEY!}
+        />
+      ) : (
+        paragraphs.map((p, i) => <p key={i}>{p}</p>)
+      )}
+    </main>
+  );
+}
 ```
 
 ---
