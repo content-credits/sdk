@@ -225,6 +225,243 @@ export default function ArticlePage({ article, apiKey }) {
 
 ---
 
+---
+
+## Headless mode — bring your own UI
+
+By default the SDK injects its own paywall overlay and hides/reveals the premium content element for you. If you want **full control** over the UI — your own paywall design, your own show/hide logic, your own paragraph clamping — use **headless mode**.
+
+In headless mode the SDK:
+
+- **Does not touch the DOM** (no `display: none`, no gradient fade, no overlay)
+- Exposes reactive **state** via `subscribe()` so your component re-renders on every change
+- Exposes **action methods** (`login()`, `purchase()`, `buyMoreCredits()`) you call from your own buttons
+
+### Headless state shape
+
+```ts
+interface SDKState {
+  isLoading: boolean;       // true while an access-check or purchase is in flight
+  isLoaded: boolean;        // true once the first access check has completed
+  isLoggedIn: boolean;      // true if the user has an active session
+  hasAccess: boolean;       // true if the user has purchased / has access
+  user: User | null;        // full user object when logged in
+  creditBalance: number | null;   // user's current credit balance
+  requiredCredits: number | null; // credits needed to unlock this article
+  isExtensionAvailable: boolean;
+}
+```
+
+### React hook — `useContentCreditsHeadless`
+
+```ts
+// hooks/useContentCreditsHeadless.ts
+import { useEffect, useRef, useState, useCallback } from 'react';
+import type { SDKState } from '@contentcredits/sdk';
+
+interface UseContentCreditsHeadlessReturn {
+  state: SDKState | null;
+  login: () => void;
+  purchase: () => void;
+  buyMoreCredits: () => void;
+}
+
+export function useContentCreditsHeadless(
+  apiKey: string,
+  articleUrl?: string
+): UseContentCreditsHeadlessReturn {
+  const sdkRef = useRef<import('@contentcredits/sdk').ContentCredits | null>(null);
+  const [state, setState] = useState<SDKState | null>(null);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    import('@contentcredits/sdk').then(({ ContentCredits }) => {
+      sdkRef.current = ContentCredits.init({
+        apiKey,
+        articleUrl,
+        headless: true,      // ← disable all built-in DOM/UI handling
+        enableComments: false,
+      });
+
+      // Subscribe to state changes — drives your UI reactively
+      unsubscribe = sdkRef.current.subscribe(setState);
+
+      // Seed with the current snapshot (before any change fires)
+      setState(sdkRef.current.getState());
+    });
+
+    return () => {
+      unsubscribe?.();
+      sdkRef.current?.destroy();
+      sdkRef.current = null;
+    };
+  }, [apiKey, articleUrl]);
+
+  const login = useCallback(() => { sdkRef.current?.login(); }, []);
+  const purchase = useCallback(() => { sdkRef.current?.purchase(); }, []);
+  const buyMoreCredits = useCallback(() => { sdkRef.current?.buyMoreCredits(); }, []);
+
+  return { state, login, purchase, buyMoreCredits };
+}
+```
+
+### Full Next.js example — custom paywall UI
+
+This example shows a custom paywall where **you** decide which paragraphs to show, render your own paywall card, and wire up your own buttons.
+
+```tsx
+// components/HeadlessPremiumArticle.tsx
+'use client';
+
+import { useContentCreditsHeadless } from '@/hooks/useContentCreditsHeadless';
+
+interface Props {
+  paragraphs: string[];   // article body split into paragraphs
+  teaserCount?: number;   // how many to show before the paywall
+  apiKey: string;
+}
+
+export function HeadlessPremiumArticle({ paragraphs, teaserCount = 2, apiKey }: Props) {
+  const { state, login, purchase, buyMoreCredits } = useContentCreditsHeadless(apiKey);
+
+  const isLocked = !state?.hasAccess;
+
+  return (
+    <div>
+      {/* Always show teaser paragraphs */}
+      {paragraphs.slice(0, teaserCount).map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+
+      {/* Remaining paragraphs — hidden until access is granted */}
+      {!isLocked && paragraphs.slice(teaserCount).map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+
+      {/* Your custom paywall card */}
+      {isLocked && (
+        <div className="my-paywall-card">
+          {!state?.isLoaded ? (
+            // Still loading — show a skeleton / nothing
+            <p>Loading…</p>
+          ) : !state.isLoggedIn ? (
+            // User is not logged in
+            <>
+              <h3>Read the full article</h3>
+              <p>Sign in with your Content Credits account to unlock.</p>
+              <button onClick={login} disabled={state.isLoading}>
+                {state.isLoading ? 'Opening login…' : 'Login & Unlock'}
+              </button>
+            </>
+          ) : state.creditBalance !== null &&
+            state.requiredCredits !== null &&
+            state.creditBalance < state.requiredCredits ? (
+            // Logged in but not enough credits
+            <>
+              <h3>Not enough credits</h3>
+              <p>
+                You have {state.creditBalance} credit{state.creditBalance !== 1 ? 's' : ''} but
+                this article costs {state.requiredCredits}.
+              </p>
+              <button onClick={buyMoreCredits}>Top up credits</button>
+            </>
+          ) : (
+            // Logged in, enough credits — show unlock button
+            <>
+              <h3>Unlock this article</h3>
+              {state.requiredCredits !== null && (
+                <p>Cost: {state.requiredCredits} credit{state.requiredCredits !== 1 ? 's' : ''}</p>
+              )}
+              <button onClick={purchase} disabled={state.isLoading}>
+                {state.isLoading ? 'Processing…' : 'Unlock now'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+Usage in a page:
+
+```tsx
+// app/articles/[slug]/page.tsx
+import { HeadlessPremiumArticle } from '@/components/HeadlessPremiumArticle';
+
+export default async function ArticlePage({ params }) {
+  const article = await getArticle(params.slug);
+
+  // Split HTML body into paragraphs however suits your content structure
+  const paragraphs = article.body
+    .split(/<\/p>/i)
+    .map(p => p.replace(/<[^>]+>/g, '').trim())
+    .filter(Boolean);
+
+  return (
+    <main>
+      <h1>{article.title}</h1>
+      {article.isPremium ? (
+        <HeadlessPremiumArticle
+          paragraphs={paragraphs}
+          teaserCount={2}
+          apiKey={process.env.NEXT_PUBLIC_CC_API_KEY!}
+        />
+      ) : (
+        <div dangerouslySetInnerHTML={{ __html: article.body }} />
+      )}
+    </main>
+  );
+}
+```
+
+### Listening to events alongside headless mode
+
+`subscribe()` covers state-driven UI, but you can still use `on()` for side-effects like analytics:
+
+```ts
+sdkRef.current.on('article:purchased', ({ creditsSpent, remainingBalance }) => {
+  analytics.track('article_purchased', { creditsSpent, remainingBalance });
+});
+
+sdkRef.current.on('credits:insufficient', ({ required, available }) => {
+  console.warn(`Need ${required} credits, have ${available}`);
+});
+```
+
+### Plain JavaScript (no framework)
+
+```js
+const cc = ContentCredits.init({
+  apiKey: 'pub_YOUR_KEY',
+  headless: true,
+});
+
+const unsubscribe = cc.subscribe((state) => {
+  document.getElementById('paywall').hidden = state.hasAccess;
+  document.getElementById('full-content').hidden = !state.hasAccess;
+
+  document.getElementById('btn-login').hidden   = state.isLoggedIn || state.hasAccess;
+  document.getElementById('btn-unlock').hidden  = !state.isLoggedIn || state.hasAccess;
+  document.getElementById('btn-topup').hidden   = true;
+
+  if (state.isLoggedIn && !state.hasAccess &&
+      state.creditBalance !== null && state.requiredCredits !== null &&
+      state.creditBalance < state.requiredCredits) {
+    document.getElementById('btn-unlock').hidden = true;
+    document.getElementById('btn-topup').hidden  = false;
+  }
+});
+
+document.getElementById('btn-login').addEventListener('click', () => cc.login());
+document.getElementById('btn-unlock').addEventListener('click', () => cc.purchase());
+document.getElementById('btn-topup').addEventListener('click', () => cc.buyMoreCredits());
+```
+
+---
+
 ## TypeScript types
 
 The package exports all relevant types:

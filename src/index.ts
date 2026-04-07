@@ -81,11 +81,12 @@ export class ContentCredits {
     // 2. Hide premium content immediately (synchronous) before any async work.
     //    This prevents the flash of full article content that would otherwise
     //    appear during the token-refresh and access-check network round-trips.
+    //    Skipped in headless mode — the host app owns all DOM manipulation.
     const earlyGate = createGate({
       selector: this.config.contentSelector,
       teaserParagraphs: this.config.teaserParagraphs,
     });
-    earlyGate.hide();
+    if (!this.config.headless) earlyGate.hide();
 
     // 3. If no access token in memory/session, attempt a silent refresh.
     //    This runs on every new browser session (after the browser was closed)
@@ -119,6 +120,64 @@ export class ContentCredits {
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
+
+  /**
+   * Subscribe to state changes. The callback receives the full state snapshot
+   * every time any field changes. Returns an unsubscribe function.
+   *
+   * Primarily useful in **headless mode** — lets you drive your own UI from
+   * reactive state without polling `getState()`.
+   *
+   * @example
+   * const unsubscribe = cc.subscribe((state) => {
+   *   if (state.hasAccess) showFullContent();
+   *   else showPaywall(state);
+   * });
+   */
+  subscribe(fn: (state: SDKState) => void): () => void {
+    return this.state.subscribe(fn);
+  }
+
+  /**
+   * Trigger the login flow programmatically.
+   *
+   * - Desktop: opens a popup window to the Content Credits auth page.
+   * - Mobile: performs a full-page redirect.
+   * - Extension: delegates to the browser extension.
+   *
+   * Primarily useful in **headless mode** where you render your own "Login"
+   * button and call this from its `onClick` handler.
+   */
+  async login(): Promise<void> {
+    await this.paywallModule?.login();
+  }
+
+  /**
+   * Trigger the article purchase flow programmatically.
+   *
+   * Deducts the required credits from the user's balance and, on success,
+   * updates `state.hasAccess` to `true` and emits `article:purchased`.
+   *
+   * If the user is not logged in, this automatically opens the login flow
+   * first, then proceeds with the purchase.
+   *
+   * Primarily useful in **headless mode** where you render your own "Unlock"
+   * button and call this from its `onClick` handler.
+   */
+  async purchase(): Promise<void> {
+    await this.paywallModule?.purchase();
+  }
+
+  /**
+   * Open the Content Credits dashboard in a new tab so the user can top up
+   * their credit balance.
+   *
+   * Primarily useful in **headless mode** when `state.creditBalance` is lower
+   * than `state.requiredCredits`.
+   */
+  buyMoreCredits(): void {
+    this.paywallModule?.buyMoreCredits();
+  }
 
   /** Subscribe to an SDK event. Returns an unsubscribe function. */
   on<K extends SDKEventName>(event: K, handler: SDKEventHandler<K>): () => void {
