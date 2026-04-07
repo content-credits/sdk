@@ -127,6 +127,21 @@ export interface SDKConfig {
 
   /** Enable verbose debug logging */
   debug?: boolean;
+
+  /**
+   * Headless mode — disables all built-in DOM manipulation and UI rendering.
+   *
+   * When `true` the SDK will NOT:
+   * - hide / reveal the premium content element
+   * - inject the paywall overlay or gradient fade
+   *
+   * Instead it exposes reactive state (via `subscribe()`) and action methods
+   * (`login()`, `purchase()`, `buyMoreCredits()`) so you can build a fully
+   * custom paywall UI in React, Vue, Svelte, or plain JS.
+   *
+   * Default: `false`
+   */
+  headless?: boolean;
 }
 
 export interface SDKTheme {

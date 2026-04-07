@@ -28,6 +28,7 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     enableComments: raw.enableComments ?? true,
     extensionId: raw.extensionId ?? __EXTENSION_ID__,
     debug: raw.debug ?? false,
+    headless: raw.headless ?? false,
     apiBaseUrl: __API_BASE_URL__,
     accountsUrl: __ACCOUNTS_URL__,
     paywallTemplate: raw.paywallTemplate,
