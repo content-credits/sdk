@@ -123,12 +123,16 @@ export function createPaywall(
             creditBalance: state.get().creditBalance,
           });
         }
-        emitter.emit('credits:insufficient', {
-          required: state.get().requiredCredits ?? 0,
-          available: state.get().creditBalance ?? 0,
-        });
+        const required = state.get().requiredCredits ?? 0;
+        const available = state.get().creditBalance ?? 0;
+        config.onInsufficientCredits?.({ required, available });
+        emitter.emit('credits:insufficient', { required, available });
       } else {
         if (!config.headless) renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        config.onPurchaseRequired?.({
+          requiredCredits: state.get().requiredCredits,
+          creditBalance: state.get().creditBalance,
+        });
         emitter.emit('error', { message: 'Purchase failed', error: err });
       }
     }
@@ -155,6 +159,7 @@ export function createPaywall(
         gate.hide();
         renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
       }
+      config.onLoginRequired?.();
       emitter.emit('paywall:shown', {});
       return;
     }
@@ -180,6 +185,10 @@ export function createPaywall(
           gate.hide();
           renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
         }
+        config.onPurchaseRequired?.({
+          requiredCredits: state.get().requiredCredits,
+          creditBalance: state.get().creditBalance,
+        });
         emitter.emit('paywall:shown', {});
       }
     } catch (err) {
@@ -188,6 +197,7 @@ export function createPaywall(
         gate.hide();
         renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
       }
+      config.onLoginRequired?.();
       if (!(err instanceof ApiError && err.status === 401)) {
         emitter.emit('error', { message: 'Access check failed', error: err });
       }
@@ -224,6 +234,7 @@ export function createPaywall(
             gate.hide();
             renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
           }
+          config.onLoginRequired?.();
           emitter.emit('paywall:shown', {});
         } else if (data.doesHaveAccess) {
           handleAccessGranted(0, data.creditBalance ?? 0);
@@ -235,6 +246,10 @@ export function createPaywall(
               creditBalance: data.creditBalance,
             });
           }
+          config.onPurchaseRequired?.({
+            requiredCredits: data.requiredCredits ?? null,
+            creditBalance: data.creditBalance ?? null,
+          });
           emitter.emit('paywall:shown', {});
         }
       });

@@ -125,6 +125,66 @@ export interface SDKConfig {
   /** Called when the user is granted access to the article */
   onAccessGranted?: () => void;
 
+  // ── Headless / custom-UI callbacks ──────────────────────────────────────────
+  // All callbacks below fire regardless of headless mode. In headless mode the
+  // SDK calls these instead of rendering its own UI; in default mode they fire
+  // alongside the built-in UI so you can run side-effects without switching modes.
+
+  /**
+   * Called on every state change. Receives the full state snapshot.
+   * Use this as the single reactive hook to drive a custom UI instead of
+   * calling `cc.subscribe()` separately.
+   */
+  onStateChange?: (state: SDKState) => void;
+
+  /**
+   * Called once the SDK has finished its first access check.
+   * Equivalent to listening for the `ready` event.
+   */
+  onReady?: (state: SDKState) => void;
+
+  /**
+   * Called when the paywall is reached and the user is **not logged in**.
+   * Render your login UI here and call `cc.login()` from your button.
+   */
+  onLoginRequired?: () => void;
+
+  /**
+   * Called when the user is logged in but has **not yet purchased** this article.
+   * Render your unlock/purchase UI here and call `cc.purchase()` from your button.
+   */
+  onPurchaseRequired?: (info: { requiredCredits: number | null; creditBalance: number | null }) => void;
+
+  /**
+   * Called when the user is logged in but their credit balance is **below** the
+   * article price. Render a top-up UI here and call `cc.buyMoreCredits()`.
+   */
+  onInsufficientCredits?: (info: { required: number; available: number }) => void;
+
+  /**
+   * Called after a successful article purchase.
+   * Equivalent to listening for the `article:purchased` event.
+   */
+  onPurchased?: (info: { creditsSpent: number; remainingBalance: number }) => void;
+
+  /**
+   * Called when a user logs in.
+   * Equivalent to listening for the `auth:login` event.
+   */
+  onUserLogin?: (user: User) => void;
+
+  /**
+   * Called when the user logs out.
+   * Equivalent to listening for the `auth:logout` event.
+   */
+  onUserLogout?: () => void;
+
+  /**
+   * Called when any SDK error occurs.
+   * Equivalent to listening for the `error` event.
+   */
+  onError?: (info: { message: string; error?: unknown }) => void;
+
   /** Enable verbose debug logging */
   debug?: boolean;
 
@@ -151,7 +211,20 @@ export interface SDKTheme {
   fontFamily?: string;
 }
 
-export interface ResolvedConfig extends Required<Omit<SDKConfig, 'paywallTemplate' | 'onAccessGranted' | 'theme'>> {
+export interface ResolvedConfig extends Required<Omit<SDKConfig,
+  | 'paywallTemplate'
+  | 'onAccessGranted'
+  | 'onStateChange'
+  | 'onReady'
+  | 'onLoginRequired'
+  | 'onPurchaseRequired'
+  | 'onInsufficientCredits'
+  | 'onPurchased'
+  | 'onUserLogin'
+  | 'onUserLogout'
+  | 'onError'
+  | 'theme'
+>> {
   articleUrl: string;
   hostName: string;
   pageTitle: string;
@@ -159,6 +232,15 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig, 'paywallTemplat
   accountsUrl: string;
   paywallTemplate?: string;
   onAccessGranted?: () => void;
+  onStateChange?: (state: SDKState) => void;
+  onReady?: (state: SDKState) => void;
+  onLoginRequired?: () => void;
+  onPurchaseRequired?: (info: { requiredCredits: number | null; creditBalance: number | null }) => void;
+  onInsufficientCredits?: (info: { required: number; available: number }) => void;
+  onPurchased?: (info: { creditsSpent: number; remainingBalance: number }) => void;
+  onUserLogin?: (user: User) => void;
+  onUserLogout?: () => void;
+  onError?: (info: { message: string; error?: unknown }) => void;
   theme: Required<SDKTheme>;
 }
 
