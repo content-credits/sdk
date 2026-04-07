@@ -156,7 +156,7 @@ paywallTemplate: '<div class="my-overlay"><h2>Premium Content</h2></div>'
 ```
 
 :::tip
-For full custom UI control, use `headless: true` instead — it disables all SDK UI and lets you render anything you like. See the [Headless mode section](/integration-guides/react#headless-mode--fully-custom-ui) of the React guide.
+For full custom UI control, use `headless: true` instead — it disables all SDK UI and lets you render anything you like. See the [Headless mode section](/integration-guides/headless) of the React guide.
 :::
 
 ---
@@ -185,7 +185,7 @@ When `true`, the SDK does **not** touch the DOM at all — no content hiding, no
 headless: true
 ```
 
-See the [Headless mode guide](/integration-guides/react#headless-mode--fully-custom-ui) for full examples.
+See the [Headless mode guide](/integration-guides/headless) for full examples.
 
 ---
 

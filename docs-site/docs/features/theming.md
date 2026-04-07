@@ -89,7 +89,7 @@ ContentCredits.init({
 :::caution
 When using `paywallTemplate`, the SDK's built-in login and purchase buttons will not be rendered. You are responsible for wiring up actions yourself.
 
-For full custom UI control, consider using `headless: true` instead — it completely disables all SDK UI and gives you explicit callbacks (`onLoginRequired`, `onPurchaseRequired`, etc.) and action methods (`cc.login()`, `cc.purchase()`, `cc.buyMoreCredits()`). See the [Headless mode guide](/integration-guides/react#headless-mode--fully-custom-ui).
+For full custom UI control, consider using `headless: true` instead — it completely disables all SDK UI and gives you explicit callbacks (`onLoginRequired`, `onPurchaseRequired`, etc.) and action methods (`cc.login()`, `cc.purchase()`, `cc.buyMoreCredits()`). See the [Headless mode guide](/integration-guides/headless).
 
 For minor visual changes (colours, font), use the `theme` option — no custom template needed.
 :::

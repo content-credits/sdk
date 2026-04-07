@@ -22,7 +22,7 @@ Every event also has a **config callback equivalent** you can pass directly to `
 | `credits:insufficient` | `onInsufficientCredits({ required, available })` |
 | `error` | `onError({ message, error? })` |
 
-Use `on()` for side-effects like analytics. Use config callbacks for driving UI — especially in [headless mode](/integration-guides/react#headless-mode--fully-custom-ui).
+Use `on()` for side-effects like analytics. Use config callbacks for driving UI — especially in [headless mode](/integration-guides/headless).
 :::
 
 ---
