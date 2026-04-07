@@ -199,6 +199,39 @@ If your content loads asynchronously, call `ContentCredits.init()` after the con
 
 ---
 
+## Headless mode — no built-in UI
+
+If you want complete control over the paywall UI — your own design, your own show/hide logic, your own paragraph clamping — set `headless: true`. The SDK will:
+
+- **Not** hide or reveal any DOM elements
+- **Not** inject the paywall overlay or gradient fade
+- **Call your callbacks** at each state transition instead
+
+```js
+const cc = ContentCredits.init({
+  apiKey: 'pub_YOUR_KEY',
+  headless: true,
+
+  onLoginRequired() {
+    showMyLoginUI();
+  },
+  onPurchaseRequired({ requiredCredits }) {
+    showMyUnlockUI(requiredCredits);
+  },
+  onAccessGranted() {
+    document.getElementById('premium-content').style.display = 'block';
+    document.getElementById('paywall').style.display = 'none';
+  },
+});
+
+document.getElementById('btn-login').onclick    = () => cc.login();
+document.getElementById('btn-purchase').onclick = () => cc.purchase();
+```
+
+See the [Headless mode guide](/integration-guides/react#headless-mode--fully-custom-ui) for complete examples including vanilla JS, React, and Next.js.
+
+---
+
 ## Background colour customisation
 
 The gradient fade that covers the teaser cutoff defaults to fading to white (`#fff`). If your article has a different background colour, set the `--cc-bg` CSS variable on the content element:

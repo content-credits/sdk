@@ -87,7 +87,7 @@ After adding the script tag, open your browser console and run:
 
 ```js
 ContentCreditsSDK.ContentCredits.version
-// → "2.0.0"
+// → "2.3.0"
 ```
 
 If you see a version number, the SDK loaded correctly.

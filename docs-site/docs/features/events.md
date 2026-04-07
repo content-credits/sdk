@@ -8,6 +8,23 @@ sidebar_position: 3
 
 The SDK emits typed events throughout the reader's lifecycle. Subscribe to them to trigger analytics, update your UI, or integrate with third-party tools.
 
+:::tip Two ways to listen
+Every event also has a **config callback equivalent** you can pass directly to `init()` — no need to call `cc.on()` separately:
+
+| Event | Config callback |
+|---|---|
+| `ready` | `onReady(state)` |
+| `auth:login` | `onUserLogin(user)` |
+| `auth:logout` | `onUserLogout()` |
+| `paywall:shown` | `onLoginRequired()` / `onPurchaseRequired(...)` |
+| `paywall:hidden` | `onAccessGranted()` |
+| `article:purchased` | `onPurchased({ creditsSpent, remainingBalance })` |
+| `credits:insufficient` | `onInsufficientCredits({ required, available })` |
+| `error` | `onError({ message, error? })` |
+
+Use `on()` for side-effects like analytics. Use config callbacks for driving UI — especially in [headless mode](/integration-guides/react#headless-mode--fully-custom-ui).
+:::
+
 ---
 
 ## Subscribing to events
@@ -118,7 +135,8 @@ Fired when the reader tries to purchase but doesn't have enough credits.
 ```ts
 cc.on('credits:insufficient', ({ required, available }) => {
   console.log(`Need ${required} credits, only have ${available}`);
-  // The SDK shows a "Top up" button automatically
+  // In default mode: the SDK shows a "Top up" button automatically
+  // In headless mode: show your own top-up UI and call cc.buyMoreCredits()
 });
 ```
 

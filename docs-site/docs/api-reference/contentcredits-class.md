@@ -72,6 +72,76 @@ cc.off('auth:login', handler);
 
 ---
 
+## `cc.subscribe(fn)` → unsubscribe
+
+Subscribe to state changes. The callback fires with a full `SDKState` snapshot every time any field changes. Returns an unsubscribe function.
+
+```ts
+cc.subscribe(fn: (state: SDKState) => void): () => void
+```
+
+```ts
+const unsubscribe = cc.subscribe((state) => {
+  document.getElementById('spinner').hidden = !state.isLoading;
+  document.getElementById('paywall').hidden = state.hasAccess;
+});
+
+// Later, to stop listening:
+unsubscribe();
+```
+
+Equivalent to passing `onStateChange` in the config. Useful in headless mode when you can't pass callbacks at init time (e.g. inside a React hook).
+
+---
+
+## `cc.login()` → `Promise<void>`
+
+Trigger the login flow programmatically.
+
+```ts
+cc.login(): Promise<void>
+```
+
+- **Desktop**: opens a popup window to `accounts.contentcredits.com`
+- **Mobile**: performs a full-page redirect
+- **Extension**: delegates to the browser extension
+
+Use this in headless mode to wire your own "Log in" button:
+
+```js
+document.getElementById('btn-login').onclick = () => cc.login();
+```
+
+---
+
+## `cc.purchase()` → `Promise<void>`
+
+Trigger the article purchase flow programmatically. Deducts the required credits and emits `article:purchased` on success. If the user is not logged in, opens the login flow first.
+
+```ts
+cc.purchase(): Promise<void>
+```
+
+```js
+document.getElementById('btn-unlock').onclick = () => cc.purchase();
+```
+
+---
+
+## `cc.buyMoreCredits()`
+
+Open the Content Credits credit top-up dashboard in a new tab.
+
+```ts
+cc.buyMoreCredits(): void
+```
+
+```js
+document.getElementById('btn-topup').onclick = () => cc.buyMoreCredits();
+```
+
+---
+
 ## `cc.getState()` → `SDKState`
 
 Returns a snapshot of the current SDK state. Does not subscribe to changes — call it after events to get fresh values.
@@ -180,5 +250,5 @@ ContentCredits.version: string
 ```
 
 ```js
-console.log(ContentCredits.version); // "2.0.0"
+console.log(ContentCredits.version); // "2.3.0"
 ```
