@@ -181,10 +181,13 @@ export function createPaywall(
         hostName: config.hostName,
       });
 
+      // The API accepted the token → user is definitely authenticated,
+      // regardless of whether they have access to this specific article.
       state.set({
         isLoading: false,
         isLoaded: true,
         hasAccess: result.success,
+        isLoggedIn: true,
       });
 
       if (result.success) {
