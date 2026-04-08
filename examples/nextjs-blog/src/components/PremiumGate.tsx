@@ -97,7 +97,11 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
   const purchase = useCallback(() => sdkRef.current?.purchase(), []);
   const buyMoreCredits = useCallback(() => sdkRef.current?.buyMoreCredits(), []);
 
-  const { isLoaded, isLoggedIn, hasAccess, creditBalance, requiredCredits } = state;
+  const { isLoaded, hasAccess, creditBalance, requiredCredits } = state;
+  // state.isLoggedIn may be false in older SDK versions even when a valid token
+  // exists (the isLoggedIn: true write in checkAccess() was added after 2.3.0).
+  // Call the synchronous isLoggedIn() method directly as the source of truth.
+  const isLoggedIn = state.isLoggedIn || (sdkRef.current?.isLoggedIn?.() ?? false);
   const balance = creditBalance ?? 0;
   const cost = requiredCredits;
   const canAfford = cost !== null && balance >= cost;
