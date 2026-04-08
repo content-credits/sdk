@@ -23,7 +23,7 @@ import { createCommentsApi } from './api/comments.js';
 import { createPaywall } from './paywall/index.js';
 import { createGate } from './paywall/gate.js';
 import { createComments } from './comments/index.js';
-import { tokenStorage } from './auth/storage.js';
+import { tokenStorage, refreshTokenStorage } from './auth/storage.js';
 import { consumeTokenFromUrl } from './auth/popup.js';
 import { tryRefreshSession } from './auth/session.js';
 
@@ -232,6 +232,32 @@ export class ContentCredits {
   /** Check if the user is currently authenticated. */
   isLoggedIn(): boolean {
     return tokenStorage.has();
+  }
+
+  /**
+   * Log the current user out.
+   *
+   * Revokes the refresh token on the server (best-effort), clears all local
+   * auth state, resets SDK state, and emits `auth:logout`.
+   */
+  async logout(): Promise<void> {
+    const rt = refreshTokenStorage.get();
+    if (rt) {
+      try {
+        await fetch(`${this.config.apiBaseUrl}/auth/log-out`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: rt }),
+          credentials: 'omit',
+        });
+      } catch {
+        // Network error — proceed with local cleanup regardless
+      }
+    }
+    tokenStorage.clear();
+    refreshTokenStorage.clear();
+    this.state.reset();
+    this.emitter.emit('auth:logout', {});
   }
 
   /** Tear down the SDK — removes all UI, event listeners, and stored state. */

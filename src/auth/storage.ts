@@ -14,10 +14,12 @@ const REFRESH_KEY  = 'cc_rt';
  *  └─ Layer 3: localStorage — survives browser close; used to silently
  *     re-authenticate on the next visit without showing a popup
  *
- * We intentionally never write to document.cookie (no HttpOnly = XSS risk).
- * The refresh token in localStorage is the accepted industry trade-off:
- * it persists across sessions at the cost of XSS accessibility, mitigated
- * by short-lived access tokens and server-side refresh token rotation.
+ * We intentionally never write to document.cookie — both localStorage and
+ * non-HttpOnly cookies are equally XSS-accessible.  The truly safe option
+ * (HttpOnly server-set cookie) requires cross-site cookie support which
+ * browsers are phasing out for third-party embeds.  localStorage is
+ * first-party (publisher-domain scoped), never blocked, and the risk is
+ * mitigated by short-lived access tokens and server-side refresh token rotation.
  */
 let memoryToken: string | null = null;
 
