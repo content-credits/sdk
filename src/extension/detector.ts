@@ -35,8 +35,8 @@ export function detectExtension(extensionId: string): Promise<boolean> {
 
     // Strategy 1: image load from chrome-extension:// protocol
     const img = new Image();
-    img.onload = () => done(true);
-    img.onerror = () => done(false);
+    img.onload = (): void => done(true);
+    img.onerror = (): void => done(false);
     img.src = `chrome-extension://${extensionId}/icons/icon16.png`;
 
     // Strategy 3: timeout safety net

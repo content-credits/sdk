@@ -4,11 +4,18 @@ import type { createCommentsApi } from '../api/comments.js';
 import type { EventEmitter } from '../core/events.js';
 import type { ResolvedConfig } from '../types/index.js';
 
+export interface CommentsModule {
+  init(): void;
+  open(): void;
+  close(): void;
+  destroy(): void;
+}
+
 export function createComments(
   config: ResolvedConfig,
   commentsApi: ReturnType<typeof createCommentsApi>,
   emitter: EventEmitter
-) {
+): CommentsModule {
   const panel = createCommentPanel(config, commentsApi, emitter, () => widget.show());
   const widget = createCommentWidget(config.theme.primaryColor, () => {
     widget.hide();

@@ -1,5 +1,13 @@
 import type { SDKState, User } from '../types/index.js';
 
+export interface StateStore {
+  get(): SDKState;
+  set(patch: Partial<SDKState>): void;
+  subscribe(fn: (state: SDKState) => void): () => void;
+  reset(): void;
+  setUser(user: User | null): void;
+}
+
 export function createInitialState(): SDKState {
   return {
     isLoading: false,
@@ -13,7 +21,7 @@ export function createInitialState(): SDKState {
   };
 }
 
-export function createState() {
+export function createState(): StateStore {
   let current: SDKState = createInitialState();
   const subscribers: Array<(state: SDKState) => void> = [];
 
@@ -49,5 +57,3 @@ export function createState() {
 
   return { get, set, subscribe, reset, setUser };
 }
-
-export type StateStore = ReturnType<typeof createState>;

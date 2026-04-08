@@ -14,12 +14,23 @@ export type PaywallUIState =
   | 'granted'       // access granted, overlay removed
 
 export interface PaywallRendererCallbacks {
-  onLogin(): void;
-  onPurchase(): void;
+  onLogin(): void | Promise<void>;
+  onPurchase(): void | Promise<void>;
   onBuyMoreCredits(): void;
 }
 
-export function createPaywallRenderer(config: ResolvedConfig) {
+export interface PaywallRenderer {
+  init(): void;
+  render(
+    state: PaywallUIState,
+    callbacks: PaywallRendererCallbacks,
+    meta?: { requiredCredits?: number | null; creditBalance?: number | null }
+  ): void;
+  setButtonLoading(loading: boolean): void;
+  destroy(): void;
+}
+
+export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   let root: ShadowRoot | null = null;
   let overlay: HTMLElement | null = null;
 
@@ -77,7 +88,7 @@ export function createPaywallRenderer(config: ResolvedConfig) {
 
     const btn = el('button', 'Login & Buy with Content Credits');
     btn.className = 'cc-btn cc-btn-primary';
-    btn.addEventListener('click', cb.onLogin);
+    btn.addEventListener('click', () => { void cb.onLogin(); });
     parent.appendChild(btn);
 
     parent.appendChild(poweredBy());
@@ -96,7 +107,7 @@ export function createPaywallRenderer(config: ResolvedConfig) {
 
     const btn = el('button', credits !== null ? `Buy for ${credits} Credit${credits !== 1 ? 's' : ''}` : 'Buy with Content Credits');
     btn.className = 'cc-btn cc-btn-primary';
-    btn.addEventListener('click', cb.onPurchase);
+    btn.addEventListener('click', () => { void cb.onPurchase(); });
     parent.appendChild(btn);
 
     parent.appendChild(poweredBy());
@@ -118,7 +129,7 @@ export function createPaywallRenderer(config: ResolvedConfig) {
 
     const btn = el('button', 'Buy More Credits');
     btn.className = 'cc-btn cc-btn-primary';
-    btn.addEventListener('click', cb.onBuyMoreCredits);
+    btn.addEventListener('click', () => cb.onBuyMoreCredits());
     parent.appendChild(btn);
 
     parent.appendChild(poweredBy());

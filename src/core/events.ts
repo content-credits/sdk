@@ -4,7 +4,14 @@ type ListenerMap = {
   [K in SDKEventName]?: Array<SDKEventHandler<K>>;
 };
 
-export function createEventEmitter() {
+export interface EventEmitter {
+  on<K extends SDKEventName>(event: K, handler: SDKEventHandler<K>): () => void;
+  off<K extends SDKEventName>(event: K, handler: SDKEventHandler<K>): void;
+  emit<K extends SDKEventName>(event: K, payload: SDKEventMap[K]): void;
+  removeAll(): void;
+}
+
+export function createEventEmitter(): EventEmitter {
   const listeners: ListenerMap = {};
 
   function on<K extends SDKEventName>(event: K, handler: SDKEventHandler<K>): () => void {
@@ -18,14 +25,14 @@ export function createEventEmitter() {
   }
 
   function off<K extends SDKEventName>(event: K, handler: SDKEventHandler<K>): void {
-    const arr = listeners[event] as Array<SDKEventHandler<K>> | undefined;
+    const arr = listeners[event];
     if (!arr) return;
     const idx = arr.indexOf(handler);
     if (idx >= 0) arr.splice(idx, 1);
   }
 
   function emit<K extends SDKEventName>(event: K, payload: SDKEventMap[K]): void {
-    const arr = listeners[event] as Array<SDKEventHandler<K>> | undefined;
+    const arr = listeners[event];
     if (arr) {
       arr.forEach(handler => {
         try {
@@ -54,5 +61,3 @@ export function createEventEmitter() {
 
   return { on, off, emit, removeAll };
 }
-
-export type EventEmitter = ReturnType<typeof createEventEmitter>;

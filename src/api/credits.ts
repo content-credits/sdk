@@ -1,7 +1,12 @@
 import type { ApiClient } from './client.js';
 import type { CheckAccessResponse, PurchaseResponse } from '../types/index.js';
 
-export function createCreditsApi(client: ApiClient) {
+export interface CreditsApi {
+  checkAccess(params: { apiKey: string; postUrl: string; postName: string; hostName: string }): Promise<CheckAccessResponse>;
+  purchaseArticle(params: { apiKey: string; postUrl: string; postName: string; hostName: string }): Promise<PurchaseResponse>;
+}
+
+export function createCreditsApi(client: ApiClient): CreditsApi {
   return {
     checkAccess(params: {
       apiKey: string;

@@ -6,7 +6,16 @@ import type {
   CommentSortBy,
 } from '../types/index.js';
 
-export function createCommentsApi(client: ApiClient) {
+export interface CommentsApi {
+  ensureThread(params: { pageUrl: string; hostname: string }): Promise<CommentThread>;
+  getComments(params: { pageUrl: string; sortBy: CommentSortBy }): Promise<CommentsResponse>;
+  postComment(params: { threadId: string; content: string; parentCommentId?: string | null }): Promise<Comment>;
+  editComment(commentId: string, content: string): Promise<Comment>;
+  deleteComment(commentId: string): Promise<Comment>;
+  toggleLike(commentId: string): Promise<{ success: boolean; data: { _id: string; likeCount: number; hasLiked: boolean } }>;
+}
+
+export function createCommentsApi(client: ApiClient): CommentsApi {
   return {
     // Backend returns the thread object directly (no success wrapper)
     ensureThread(params: { pageUrl: string; hostname: string }): Promise<CommentThread> {

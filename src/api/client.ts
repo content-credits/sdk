@@ -21,7 +21,14 @@ function shouldRetry(status: number): boolean {
   return status >= 500 || status === 429;
 }
 
-export function createApiClient(baseUrl: string, emitter: EventEmitter) {
+export interface ApiClient {
+  get<T>(path: string): Promise<T>;
+  post<T>(path: string, body: Record<string, unknown>): Promise<T>;
+  put<T>(path: string, body: Record<string, unknown>): Promise<T>;
+  delete<T>(path: string): Promise<T>;
+}
+
+export function createApiClient(baseUrl: string, emitter: EventEmitter): ApiClient {
   async function request<T>(
     method: string,
     path: string,
@@ -113,10 +120,10 @@ export function createApiClient(baseUrl: string, emitter: EventEmitter) {
   }
 
   return {
-    get: <T>(path: string) => request<T>('GET', path),
-    post: <T>(path: string, body: Record<string, unknown>) => request<T>('POST', path, body),
-    put: <T>(path: string, body: Record<string, unknown>) => request<T>('PUT', path, body),
-    delete: <T>(path: string) => request<T>('DELETE', path),
+    get: <T>(path: string): Promise<T> => request<T>('GET', path),
+    post: <T>(path: string, body: Record<string, unknown>): Promise<T> => request<T>('POST', path, body),
+    put: <T>(path: string, body: Record<string, unknown>): Promise<T> => request<T>('PUT', path, body),
+    delete: <T>(path: string): Promise<T> => request<T>('DELETE', path),
   };
 }
 
@@ -131,4 +138,3 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiClient = ReturnType<typeof createApiClient>;

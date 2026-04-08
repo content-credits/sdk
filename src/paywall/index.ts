@@ -1,6 +1,6 @@
 import { createGate } from './gate.js';
 import type { Gate } from './gate.js';
-import { createPaywallRenderer } from './renderer.js';
+import { createPaywallRenderer, type PaywallRenderer } from './renderer.js';
 import { detectExtension } from '../extension/detector.js';
 import { createExtensionBridge } from '../extension/bridge.js';
 import { openAuthPopup, isMobileDevice, consumeTokenFromUrl } from '../auth/popup.js';
@@ -13,13 +13,22 @@ import type { ResolvedConfig } from '../types/index.js';
 
 declare const __ACCOUNTS_URL__: string;
 
+export interface PaywallModule {
+  init(): Promise<void>;
+  checkAccess(): Promise<void>;
+  destroy(): void;
+  login(): Promise<void>;
+  purchase(): Promise<void>;
+  buyMoreCredits(): void;
+}
+
 export function createPaywall(
   config: ResolvedConfig,
   creditsApi: ReturnType<typeof createCreditsApi>,
   state: StateStore,
   emitter: EventEmitter,
   existingGate?: Gate
-) {
+): PaywallModule {
   // Accept a pre-created gate so the caller can call gate.hide() synchronously
   // before any async work, preventing a flash of the full article content.
   const gate = existingGate ?? createGate({
@@ -27,7 +36,7 @@ export function createPaywall(
     teaserParagraphs: config.teaserParagraphs,
   });
 
-  const renderer = createPaywallRenderer(config);
+  const renderer: PaywallRenderer = createPaywallRenderer(config);
   const bridge = createExtensionBridge();
   let extensionAvailable = false;
 
