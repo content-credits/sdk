@@ -9,8 +9,8 @@
 #     when release-major.txt is ahead of package.json for a new major line).
 #
 # One-time npmjs.com setup (@contentcredits/sdk → Package settings → Trusted Publisher → GitHub Actions):
-#   - Organization or user: the GitHub owner of this repo (e.g. contentcredits)
-#   - Repository: must match this repo name (e.g. sdk)
+#   - Organization or user: content-credits  (exact, case-sensitive)
+#   - Repository: sdk  (exact, case-sensitive)
 #   - Workflow filename: publish-npm.yml  (exact name, case-sensitive)
 #   - Environment name: npm  (must match the job’s `environment:` below, case-sensitive)
 #   - package.json "repository.url" must match this GitHub repo (see package.json).
@@ -45,9 +45,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.14'
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
+          node-version: "22.14"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
 
       - name: Use npm CLI with trusted publishing support
         run: npm install -g npm@^11.5.1
