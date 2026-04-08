@@ -1,7 +1,7 @@
 import resolve from '@rollup/plugin-node-resolve';
 import typescript from '@rollup/plugin-typescript';
 import replace from '@rollup/plugin-replace';
-import { terser } from 'rollup-plugin-terser';
+import terser from '@rollup/plugin-terser';
 import dts from 'rollup-plugin-dts';
 
 const useLocalhost = process.env.USE_LOCALHOST === 'true';
@@ -63,7 +63,7 @@ export default [
       ...sharedPlugins,
       terser({
         compress: { passes: 2 },
-        output: { comments: false },
+        format: { comments: false },
       }),
     ],
   },
