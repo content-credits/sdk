@@ -28,36 +28,44 @@ export default function ArticlePage({
 
   const apiKey = process.env.NEXT_PUBLIC_CC_API_KEY ?? "";
 
-  // Render article body paragraphs as plain HTML paragraphs
-  const bodyBlocks = article.content.split("\n\n").map((block, i) => {
-    if (block.startsWith("## ")) {
+  function renderBlocks(content: string) {
+    return content.split("\n\n").map((block, i) => {
+      if (block.startsWith("## ")) {
+        return (
+          <h2 key={i} className="text-2xl font-bold mt-10 mb-4 text-gray-900">
+            {block.slice(3)}
+          </h2>
+        );
+      }
+      if (block.startsWith("```")) {
+        const lines = block.split("\n");
+        const code = lines.slice(1, -1).join("\n");
+        return (
+          <pre key={i} className="bg-gray-900 text-green-400 rounded-lg p-4 overflow-x-auto text-sm my-6 font-mono">
+            <code>{code}</code>
+          </pre>
+        );
+      }
       return (
-        <h2
-          key={i}
-          className="text-2xl font-bold mt-10 mb-4 text-gray-900"
-        >
-          {block.slice(3)}
-        </h2>
+        <p key={i} className="text-gray-700 leading-relaxed mb-5 text-lg">
+          {block}
+        </p>
       );
-    }
-    if (block.startsWith("```")) {
-      const lines = block.split("\n");
-      const code = lines.slice(1, -1).join("\n");
-      return (
-        <pre
-          key={i}
-          className="bg-gray-900 text-green-400 rounded-lg p-4 overflow-x-auto text-sm my-6 font-mono"
-        >
-          <code>{code}</code>
-        </pre>
-      );
-    }
-    return (
-      <p key={i} className="text-gray-700 leading-relaxed mb-5 text-lg">
-        {block}
-      </p>
-    );
-  });
+    });
+  }
+
+  // For premium articles, only send the teaser to the client.
+  // Full content is fetched client-side from /api/article/[slug]/content
+  // after the CC API confirms access — so the full article is never in
+  // the page HTML or RSC payload where inspect-element could expose it.
+  const TEASER_PARAGRAPHS = 3;
+  const teaserContent = article.content
+    .split("\n\n")
+    .slice(0, TEASER_PARAGRAPHS)
+    .join("\n\n");
+
+  const bodyBlocks = renderBlocks(article.content);
+  const teaserBlocks = renderBlocks(teaserContent);
 
   return (
     <article className="max-w-2xl mx-auto">
@@ -94,7 +102,7 @@ export default function ArticlePage({
 
       {/* Body — gated or free */}
       {article.isPremium ? (
-        <PremiumGate apiKey={apiKey} blocks={bodyBlocks} />
+        <PremiumGate apiKey={apiKey} slug={params.slug} teaserBlocks={teaserBlocks} />
       ) : (
         <div className="prose-content">{bodyBlocks}</div>
       )}
