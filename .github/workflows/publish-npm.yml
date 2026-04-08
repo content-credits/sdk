@@ -1,0 +1,130 @@
+# Publishes @contentcredits/sdk to npm on push to master/main using npm Trusted Publishing (OIDC).
+# No long-lived NPM_TOKEN is required for the publish step.
+#
+# Versioning (same idea as content-credits-wordpress-plugin):
+#   - Manual major: edit release-major.txt in this repo.
+#   - Automatic minor: each publish bumps minor, patch stays 0.
+#   - If git tags v{MAJOR}.*.* exist, the next version follows the latest tag.
+#   - If none exist yet, the next version is derived from package.json (or MAJOR.0.0
+#     when release-major.txt is ahead of package.json for a new major line).
+#
+# One-time npmjs.com setup (@contentcredits/sdk → Package settings → Trusted Publisher → GitHub Actions):
+#   - Organization or user: the GitHub owner of this repo (e.g. contentcredits)
+#   - Repository: must match this repo name (e.g. sdk)
+#   - Workflow filename: publish-npm.yml  (exact name, case-sensitive)
+#   - Environment name: npm  (must match the job’s `environment:` below, case-sensitive)
+#   - package.json "repository.url" must match this GitHub repo (see package.json).
+#
+# GitHub (repo → Settings → Environments): create an environment named "npm". Optional but
+# recommended: add "Required reviewers" so merges to main don’t publish until a release
+# approver approves the workflow deployment to this environment.
+#
+# Optional: Settings → Publishing access → restrict tokens after OIDC works.
+# Private @scope deps: use a read-only NPM_READ_TOKEN secret on npm ci only (see npm docs).
+
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Use npm CLI with trusted publishing support
+        run: npm install -g npm@^11.5.1
+
+      - name: Compute publish version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ ! -f release-major.txt ]; then
+            echo "::error::release-major.txt is missing (manual major version)."
+            exit 1
+          fi
+
+          MAJOR=$(tr -d ' \n\r\t' < release-major.txt)
+          if ! echo "$MAJOR" | grep -qE '^[0-9]+$'; then
+            echo "::error::release-major.txt must contain a single non-negative integer major version."
+            exit 1
+          fi
+
+          LATEST=$(git tag -l "v${MAJOR}.*.*" --sort=-v:refname | head -n1 || true)
+          if [ -n "$LATEST" ]; then
+            MINOR=$(echo "$LATEST" | sed -E "s/^v${MAJOR}\\.([0-9]+)\\.[0-9]+$/\\1/")
+            if [ -z "$MINOR" ] || [ "$MINOR" = "$LATEST" ]; then
+              echo "::error::Could not parse minor from tag: $LATEST"
+              exit 1
+            fi
+            NEXT=$((MINOR + 1))
+            VERSION="${MAJOR}.${NEXT}.0"
+          else
+            PKG_MAJOR=$(node -p "parseInt(require('./package.json').version.split('.')[0], 10)")
+            PKG_MINOR=$(node -p "parseInt(require('./package.json').version.split('.')[1], 10)")
+            if [ "$PKG_MAJOR" -gt "$MAJOR" ]; then
+              echo "::error::package.json major (${PKG_MAJOR}) is greater than release-major.txt (${MAJOR}). Update release-major.txt."
+              exit 1
+            fi
+            if [ "$PKG_MAJOR" -lt "$MAJOR" ]; then
+              VERSION="${MAJOR}.0.0"
+            else
+              VERSION="${MAJOR}.$((PKG_MINOR + 1)).0"
+            fi
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Will publish @contentcredits/sdk@$VERSION"
+
+      - name: Set package.json version
+        run: npm pkg set "version=${{ steps.version.outputs.version }}"
+
+      - name: Sync package-lock.json root version
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm (OIDC — no publish token)
+        run: npm publish --access public
+
+      - name: Push release tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists; skipping tag push"
+            exit 0
+          fi
+          git tag -a "$TAG" -m "npm @contentcredits/sdk ${VERSION}"
+          git push origin "$TAG"

@@ -1,22 +1,39 @@
+# Builds the Docusaurus site and deploys with GitHub’s official Pages Actions.
+#
+# One-time repo setup (Settings → Pages):
+#   1. Build and deployment → Source: GitHub Actions (not “Deploy from a branch”).
+#   2. Custom domain: docs.contentcredits.com (matches docusaurus.config.ts + static/CNAME).
+#   3. DNS at your registrar:
+#        Type CNAME, name docs, target: <your-github-username-or-org>.github.io
+#      GitHub shows the exact value when you save the custom domain.
+#   4. Wait for the “DNS check” to pass; HTTPS is issued automatically.
+#
+# If you change the hostname, update: static/CNAME, docusaurus.config.ts url, and Pages settings.
+
 name: Deploy Docs
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - master
     paths:
       - 'docs-site/**'
-  workflow_dispatch:   # allow manual trigger from GitHub Actions tab
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: write   # needed to push to gh-pages branch
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages-docs
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs-site
-
     steps:
       - uses: actions/checkout@v4
 
@@ -27,14 +44,25 @@ jobs:
           cache-dependency-path: docs-site/package-lock.json
 
       - name: Install dependencies
+        working-directory: docs-site
         run: npm ci
 
-      - name: Build
+      - name: Build site
+        working-directory: docs-site
         run: npm run build
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs-site/build
-          cname: docs.contentcredits.com
+          path: docs-site/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
