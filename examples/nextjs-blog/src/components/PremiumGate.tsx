@@ -72,10 +72,7 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
   useEffect(() => {
     if (!state.hasAccess || fullContent || fetchError) return;
 
-    // getToken() was added in a later SDK release; fall back to reading the
-    // access token directly from sessionStorage for older installed versions.
-    const token = (sdkRef.current?.getToken?.() as string | null)
-      ?? sessionStorage.getItem('cc_sdk_token');
+    const token = sdkRef.current?.getToken() as string | null;
 
     if (!token) {
       setFetchError(true);
@@ -97,11 +94,7 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
   const purchase = useCallback(() => sdkRef.current?.purchase(), []);
   const buyMoreCredits = useCallback(() => sdkRef.current?.buyMoreCredits(), []);
 
-  const { isLoaded, hasAccess, creditBalance, requiredCredits } = state;
-  // state.isLoggedIn may be false in older SDK versions even when a valid token
-  // exists (the isLoggedIn: true write in checkAccess() was added after 2.3.0).
-  // Call the synchronous isLoggedIn() method directly as the source of truth.
-  const isLoggedIn = state.isLoggedIn || (sdkRef.current?.isLoggedIn?.() ?? false);
+  const { isLoaded, isLoggedIn, hasAccess, creditBalance, requiredCredits } = state;
   const balance = creditBalance ?? 0;
   const cost = requiredCredits;
   const canAfford = cost !== null && balance >= cost;
