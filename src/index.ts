@@ -235,6 +235,18 @@ export class ContentCredits {
   }
 
   /**
+   * Return the current access token, or null if not authenticated.
+   *
+   * Use this to call your own server-side API routes that need to verify
+   * the user's identity with the Content Credits API before returning
+   * protected content — avoids ever sending premium content to the browser
+   * before access is confirmed.
+   */
+  getToken(): string | null {
+    return tokenStorage.get();
+  }
+
+  /**
    * Log the current user out.
    *
    * Revokes the refresh token on the server (best-effort), clears all local
