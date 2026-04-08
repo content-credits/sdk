@@ -70,10 +70,17 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
 
   // Fetch full content once access is confirmed
   useEffect(() => {
-    if (!state.hasAccess || fullContent) return;
+    if (!state.hasAccess || fullContent || fetchError) return;
 
-    const token = sdkRef.current?.getToken?.() as string | null;
-    if (!token) return;
+    // getToken() was added in a later SDK release; fall back to reading the
+    // access token directly from sessionStorage for older installed versions.
+    const token = (sdkRef.current?.getToken?.() as string | null)
+      ?? sessionStorage.getItem('cc_sdk_token');
+
+    if (!token) {
+      setFetchError(true);
+      return;
+    }
 
     fetch(`/api/article/${slug}/content`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -84,7 +91,7 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
       })
       .then((data: { content: string }) => setFullContent(data.content))
       .catch(() => setFetchError(true));
-  }, [state.hasAccess, slug, fullContent]);
+  }, [state.hasAccess, slug, fullContent, fetchError]);
 
   const login = useCallback(() => sdkRef.current?.login(), []);
   const purchase = useCallback(() => sdkRef.current?.purchase(), []);
@@ -98,8 +105,15 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
 
   // ── Access granted: render full article ────────────────────────────────────
   if (hasAccess) {
+    if (fetchError) {
+      return (
+        <p className="text-sm text-red-500 py-6">
+          Could not load article content. Please refresh the page and try again.
+        </p>
+      );
+    }
     if (!fullContent) {
-      // Token verified but content fetch in flight
+      // Content fetch in flight
       return (
         <div className="py-10 flex justify-center">
           <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
