@@ -24,7 +24,17 @@ function getAllowedOrigins(): string[] {
 type AuthResponseHandler = (data: AuthorizationResponseData) => void;
 type PurchaseResponseHandler = (data: PurchaseResponseData) => void;
 
-export function createExtensionBridge() {
+export interface ExtensionBridge {
+  attach(): void;
+  detach(): void;
+  requestAuthorization(articleId: string, hostName: string): void;
+  requestPurchase(params: { articleId: string; hostName: string; location: string; title: string }): void;
+  requestLogin(hostName: string): void;
+  onAuthorizationResponse(handler: AuthResponseHandler): void;
+  onPurchaseResponse(handler: PurchaseResponseHandler): void;
+}
+
+export function createExtensionBridge(): ExtensionBridge {
   let authHandler: AuthResponseHandler | null = null;
   let purchaseHandler: PurchaseResponseHandler | null = null;
 
@@ -113,5 +123,3 @@ export function createExtensionBridge() {
     onPurchaseResponse,
   };
 }
-
-export type ExtensionBridge = ReturnType<typeof createExtensionBridge>;

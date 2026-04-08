@@ -31,12 +31,18 @@ function formatDate(iso: string): string {
   } catch { return ''; }
 }
 
+export interface CommentPanelApi {
+  openPanel(): void;
+  closePanel(): void;
+  destroy(): void;
+}
+
 export function createCommentPanel(
   config: ResolvedConfig,
   commentsApi: ReturnType<typeof createCommentsApi>,
   emitter: EventEmitter,
   onClose: () => void
-) {
+): CommentPanelApi {
   let root: ShadowRoot | null = null;
   let currentUserId: string | null = null;
   let currentThreadId: string | null = null;
@@ -500,7 +506,7 @@ export function createCommentPanel(
 
   function handleListClick(e: Event): void {
     const target = e.target as HTMLElement;
-    const btn = target.closest('[data-action]') as HTMLElement | null;
+    const btn = target.closest<HTMLElement>('[data-action]');
     if (!btn) return;
 
     const action = btn.dataset.action;
@@ -677,20 +683,23 @@ export function createCommentPanel(
     refreshUser();
 
     // Build panel if not already present
-    let backdrop = r.getElementById('cc-panel-backdrop');
-    if (!backdrop) {
-      backdrop = el('div');
-      backdrop.className = 'cc-panel-backdrop';
-      backdrop.id = 'cc-panel-backdrop';
-      backdrop.addEventListener('click', closePanel);
-      r.appendChild(backdrop);
-
+    let backdropEl = r.getElementById('cc-panel-backdrop');
+    if (!backdropEl) {
+      const newBackdrop = el('div');
+      newBackdrop.className = 'cc-panel-backdrop';
+      newBackdrop.id = 'cc-panel-backdrop';
+      newBackdrop.addEventListener('click', closePanel);
+      r.appendChild(newBackdrop);
       r.appendChild(buildPanel());
+      backdropEl = newBackdrop;
     }
+
+    // Capture in a const so the rAF callback has a non-nullable reference
+    const backdrop = backdropEl;
 
     // Animate open
     requestAnimationFrame(() => {
-      backdrop!.classList.add('cc-visible');
+      backdrop.classList.add('cc-visible');
       r.getElementById('cc-comments-panel')?.classList.add('cc-open');
     });
 

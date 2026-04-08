@@ -1,5 +1,19 @@
 import { tokenStorage, refreshTokenStorage } from './storage.js';
 
+interface AuthCallbackMessage {
+  type: string;
+  token?: string;
+  refreshToken?: string | null;
+}
+
+function isAuthCallback(data: unknown): data is AuthCallbackMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { type?: unknown }).type === 'cc_auth_callback'
+  );
+}
+
 const POPUP_NAME = 'ccAuthPopup';
 const POPUP_SPECS = 'scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=600,height=650';
 
@@ -66,9 +80,10 @@ export function consumeTokenFromUrl(): string | null {
       // If we're inside a popup (opened by openAuthPopup), notify the opener
       // and close instead of rendering the page. This fixes the bug where the
       // popup shows the blog article after the accounts redirect.
-      if (window.opener && !window.opener.closed) {
+      const opener = window.opener as Window | null;
+      if (opener && !opener.closed) {
         try {
-          window.opener.postMessage(
+          opener.postMessage(
             { type: 'cc_auth_callback', token, refreshToken: refreshToken ?? null },
             window.location.origin
           );
@@ -116,10 +131,10 @@ export function openAuthPopup(authUrl: string): Promise<string | null> {
     function onMessage(event: MessageEvent): void {
       // Only accept messages from our own origin
       if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'cc_auth_callback') return;
+      if (!isAuthCallback(event.data)) return;
 
-      const token = event.data.token as string | undefined;
-      const refreshToken = event.data.refreshToken as string | null | undefined;
+      const token = event.data.token;
+      const refreshToken = event.data.refreshToken;
 
       if (!token) return;
 
