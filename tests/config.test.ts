@@ -43,4 +43,12 @@ describe('resolveConfig', () => {
     });
     expect(config.hostName).toBe('example.com');
   });
+
+  it('scrubs auth params from articleUrl before resolving config', () => {
+    const config = resolveConfig({
+      apiKey: 'pub_test',
+      articleUrl: 'https://example.com/article/1?token=abc&refresh_token=def&utm_source=test',
+    });
+    expect(config.articleUrl).toBe('https://example.com/article/1?utm_source=test');
+  });
 });

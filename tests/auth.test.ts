@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { decodeJwt, isTokenExpired, getUserIdFromToken } from '../src/auth/token';
 import { tokenStorage } from '../src/auth/storage';
+import { isMobileDevice } from '../src/auth/popup';
 
 // A real JWT with exp far in the future: { id: 'user123', exp: 9999999999 }
 const VALID_JWT =
@@ -75,5 +76,43 @@ describe('tokenStorage', () => {
     // Now put the expired token directly in sessionStorage
     sessionStorage.setItem('cc_sdk_token', EXPIRED_JWT);
     expect(tokenStorage.get()).toBeNull();
+  });
+});
+
+describe('isMobileDevice', () => {
+  it('returns false for touch-enabled desktop environments', () => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+    });
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query === '(pointer: coarse)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as typeof window.matchMedia;
+
+    expect(isMobileDevice()).toBe(false);
+  });
+
+  it('returns true for small-screen coarse-pointer devices', () => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+    });
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query === '(pointer: coarse)' || query === '(max-width: 768px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as typeof window.matchMedia;
+
+    expect(isMobileDevice()).toBe(true);
   });
 });
