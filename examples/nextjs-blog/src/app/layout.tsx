@@ -42,22 +42,6 @@ export default function RootLayout({
         </header>
 
         <main className="max-w-4xl mx-auto px-4 py-10">{children}</main>
-
-        {/* Footer */}
-        <footer className="border-t border-gray-200 mt-16 py-8 text-center text-sm text-gray-400">
-          <p>
-            Paywalled content powered by{" "}
-            <a
-              href="https://contentcredits.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-green-600 hover:underline"
-            >
-              Content Credits
-            </a>
-            . This is an example integration.
-          </p>
-        </footer>
       </body>
     </html>
   );
