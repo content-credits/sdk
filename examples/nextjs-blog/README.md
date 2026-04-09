@@ -25,6 +25,8 @@ cd examples/nextjs-blog
 npm install
 ```
 
+The example tracks the latest published `@contentcredits/sdk` release, so a fresh install pulls the current SDK automatically.
+
 **2. Set your API key**
 
 ```bash
