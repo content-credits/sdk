@@ -163,11 +163,9 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
 
       {/* Full-width sticky paywall overlay */}
       <div
-        className="sticky bottom-0 py-8 mt-2"
+        className="absolute left-0 right-0 bottom-0 py-8 mt-2"
         style={{
           // Break out of the max-w-2xl container to span the full viewport
-          width: "100vw",
-          marginLeft: "calc(50% - 50vw)",
           background: "white",
           borderTop: "3px solid #111",
           boxShadow: "0 -8px 40px rgba(0,0,0,0.08)",
