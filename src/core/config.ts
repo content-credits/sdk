@@ -4,12 +4,24 @@ declare const __API_BASE_URL__: string;
 declare const __ACCOUNTS_URL__: string;
 declare const __EXTENSION_ID__: string;
 
+function normalizeArticleUrl(articleUrl: string): string {
+  try {
+    const url = new URL(articleUrl);
+    ['token', 'cc_token', 'refresh_token', 'cc_refresh_token'].forEach(param => {
+      url.searchParams.delete(param);
+    });
+    return url.toString();
+  } catch {
+    return articleUrl;
+  }
+}
+
 export function resolveConfig(raw: SDKConfig): ResolvedConfig {
   if (!raw.apiKey || typeof raw.apiKey !== 'string' || raw.apiKey.trim() === '') {
     throw new Error('[ContentCredits] apiKey is required. Get yours from the Content Credits admin panel.');
   }
 
-  const articleUrl = raw.articleUrl ?? window.location.href;
+  const articleUrl = normalizeArticleUrl(raw.articleUrl ?? window.location.href);
   let hostName: string;
 
   try {
