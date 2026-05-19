@@ -27,7 +27,23 @@ interface PremiumGateProps {
 }
 
 /**
- * Overlay paywall component.
+ * Overlay paywall component — headless mode.
+ *
+ * This example uses `headless: true` so we can build the paywall UI entirely
+ * in React. The SDK handles auth, access checks, and credit purchases; we
+ * render our own teaser/paywall JSX driven by SDK state.
+ *
+ * Alternative — let the SDK render its own UI with a React top slot:
+ *
+ *   import ReactDOM from 'react-dom/client';
+ *   import { DonationWidget } from './DonationWidget';
+ *
+ *   ContentCredits.init({
+ *     apiKey,
+ *     reactDOM,
+ *     paywallTopSlot: <DonationWidget />,
+ *     // headless: false  ← SDK renders the paywall panel + your widget
+ *   });
  *
  * Security model:
  *  - Only `teaserBlocks` (first 3 paragraphs) arrive from the server.

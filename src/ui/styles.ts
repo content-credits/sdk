@@ -2,7 +2,7 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
   return `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* Inline paywall panel — sits below the teaser content in the page flow */
+    /* ── Inline paywall panel — sits below teaser in the page flow ── */
     .cc-paywall-inline {
       width: 100%;
       padding: 36px 24px 32px;
@@ -27,6 +27,85 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       color: #6b7280;
       margin-bottom: 24px;
       line-height: 1.6;
+    }
+
+    /* ── Overlay paywall panel — full-width white panel below gated content ── */
+    .cc-paywall-overlay {
+      width: 100%;
+      background: #fff;
+      font-family: ${fontFamily};
+    }
+
+    /* Gradient that fades the article into the white panel */
+    .cc-paywall-overlay-gradient {
+      width: 100%;
+      height: 120px;
+      background: linear-gradient(to bottom, transparent 0%, #fff 100%);
+      margin-top: -120px;
+      pointer-events: none;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Top slot — client-supplied content */
+    .cc-paywall-overlay-slot {
+      padding: 32px 24px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Our SDK's unlock section below the slot */
+    .cc-paywall-overlay-body {
+      padding: 20px 24px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      text-align: center;
+    }
+
+    /* Slot item — heading */
+    .cc-slot-heading {
+      font-size: 22px;
+      font-weight: 700;
+      color: #111827;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    /* Slot item — subheading */
+    .cc-slot-subheading {
+      font-size: 16px;
+      font-weight: 600;
+      color: #374151;
+      text-align: center;
+    }
+
+    /* Slot item — body text */
+    .cc-slot-text {
+      font-size: 14px;
+      color: #6b7280;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* Slot item — divider with optional label */
+    .cc-slot-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 320px;
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    .cc-slot-divider::before,
+    .cc-slot-divider::after {
+      content: '';
+      flex: 1;
+      border-top: 1px solid #e5e7eb;
     }
 
     .cc-btn {

@@ -11,6 +11,11 @@ export interface GateOptions {
   selector: string;
   /** Number of paragraphs to show before the paywall */
   teaserParagraphs: number;
+  /**
+   * Paywall display mode. In overlay mode the gradient is rendered inside the
+   * paywall panel itself, so the gate skips injecting its own fade element.
+   */
+  paywallMode: 'inline' | 'overlay';
 }
 
 export interface Gate {
@@ -61,9 +66,9 @@ export function createGate(options: GateOptions): Gate {
     contentEl.setAttribute(GATE_ATTR, 'true');
     gated = true;
 
-    // Add a gradient fade at the bottom of the visible teaser so the cutoff
-    // looks intentional rather than abrupt.
-    if (!contentEl.querySelector('[data-cc-fade]')) {
+    // In overlay mode the gradient is part of the paywall panel itself.
+    // In inline mode inject a fade element at the bottom of the teaser.
+    if (options.paywallMode === 'inline' && !contentEl.querySelector('[data-cc-fade]')) {
       const prevPos = contentEl.style.position;
       if (!prevPos || prevPos === 'static') contentEl.style.position = 'relative';
       const fadeEl = document.createElement('div');

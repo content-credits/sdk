@@ -9,9 +9,15 @@ import { ApiError } from '../api/client.js';
 import type { createCreditsApi } from '../api/credits.js';
 import type { StateStore } from '../core/state.js';
 import type { EventEmitter } from '../core/events.js';
-import type { ResolvedConfig } from '../types/index.js';
+import type { ResolvedConfig, AuthorizationResponseData } from '../types/index.js';
 
 declare const __ACCOUNTS_URL__: string;
+
+// How long to wait for the extension to respond to an authorization request
+// before falling back to the direct API check. MV3 service workers can take
+// a moment to wake up, but if they don't respond within this window we
+// assume the extension isn't functional and proceed without it.
+const EXTENSION_RESPONSE_TIMEOUT_MS = 3_000;
 
 export interface PaywallModule {
   init(): Promise<void>;
@@ -34,6 +40,7 @@ export function createPaywall(
   const gate = existingGate ?? createGate({
     selector: config.contentSelector,
     teaserParagraphs: config.teaserParagraphs,
+    paywallMode: config.paywallMode,
   });
 
   const renderer: PaywallRenderer = createPaywallRenderer(config);
@@ -151,6 +158,43 @@ export function createPaywall(
     window.open(`${__ACCOUNTS_URL__}/consumer/dashboard`, '_blank', 'noopener,noreferrer');
   }
 
+  // ── Extension auth response handler ──────────────────────────────────────
+
+  function handleExtensionAuthResponse(data: AuthorizationResponseData): void {
+    state.set({
+      isLoggedIn: data.isAuthenticated,
+      hasAccess: data.doesHaveAccess,
+      isLoaded: true,
+      isLoading: false,
+      creditBalance: data.creditBalance ?? null,
+      requiredCredits: data.requiredCredits ?? null,
+    });
+
+    if (!data.isAuthenticated) {
+      if (!config.headless) {
+        gate.hide();
+        renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+      }
+      config.onLoginRequired?.();
+      emitter.emit('paywall:shown', {});
+    } else if (data.doesHaveAccess) {
+      handleAccessGranted(0, data.creditBalance ?? 0);
+    } else {
+      if (!config.headless) {
+        gate.hide();
+        renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+          requiredCredits: data.requiredCredits,
+          creditBalance: data.creditBalance,
+        });
+      }
+      config.onPurchaseRequired?.({
+        requiredCredits: data.requiredCredits ?? null,
+        creditBalance: data.creditBalance ?? null,
+      });
+      emitter.emit('paywall:shown', {});
+    }
+  }
+
   // ── Access Check ──────────────────────────────────────────────────────────
 
   async function checkAccess(): Promise<void> {
@@ -158,8 +202,28 @@ export function createPaywall(
     if (!config.headless) renderer.render('checking', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
 
     if (extensionAvailable) {
-      bridge.requestAuthorization(config.apiKey, config.hostName);
-      return; // response handled in onAuthorizationResponse
+      // Race the extension response against a timeout. MV3 service workers can
+      // be asleep and take time to wake — if they don't respond in time we mark
+      // the extension as non-functional and fall through to the API check so the
+      // logged-in user isn't left stuck on a blank/hidden article.
+      const responded = await new Promise<boolean>(resolve => {
+        const timer = setTimeout(() => {
+          extensionAvailable = false;
+          state.set({ isExtensionAvailable: false });
+          resolve(false);
+        }, EXTENSION_RESPONSE_TIMEOUT_MS);
+
+        bridge.onAuthorizationResponse(data => {
+          clearTimeout(timer);
+          handleExtensionAuthResponse(data);
+          resolve(true);
+        });
+
+        bridge.requestAuthorization(config.apiKey, config.hostName);
+      });
+
+      if (responded) return;
+      // Extension timed out — fall through to direct API check below.
     }
 
     if (!tokenStorage.has()) {
@@ -231,41 +295,6 @@ export function createPaywall(
 
     if (extensionAvailable) {
       bridge.attach();
-      bridge.onAuthorizationResponse(data => {
-        state.set({
-          isLoggedIn: data.isAuthenticated,
-          hasAccess: data.doesHaveAccess,
-          isLoaded: true,
-          isLoading: false,
-          creditBalance: data.creditBalance ?? null,
-          requiredCredits: data.requiredCredits ?? null,
-        });
-
-        if (!data.isAuthenticated) {
-          if (!config.headless) {
-            gate.hide();
-            renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
-          }
-          config.onLoginRequired?.();
-          emitter.emit('paywall:shown', {});
-        } else if (data.doesHaveAccess) {
-          handleAccessGranted(0, data.creditBalance ?? 0);
-        } else {
-          if (!config.headless) {
-            gate.hide();
-            renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
-              requiredCredits: data.requiredCredits,
-              creditBalance: data.creditBalance,
-            });
-          }
-          config.onPurchaseRequired?.({
-            requiredCredits: data.requiredCredits ?? null,
-            creditBalance: data.creditBalance ?? null,
-          });
-          emitter.emit('paywall:shown', {});
-        }
-      });
-
       bridge.onPurchaseResponse(data => {
         state.set({ isLoading: false, isLoaded: true, hasAccess: data.doesHaveAccess });
         if (data.doesHaveAccess) {
