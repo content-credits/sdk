@@ -95,6 +95,31 @@ export interface CommentsResponse {
 // Backend returns the thread object directly (no success wrapper)
 export type EnsureThreadResponse = CommentThread;
 
+// ─── Paywall slot types ──────────────────────────────────────────────────────
+
+export type PaywallSlotItemVariant = 'primary' | 'secondary' | 'outline';
+
+export interface PaywallSlotItem {
+  type: 'heading' | 'subheading' | 'text' | 'button' | 'divider';
+  /** Text content — used by heading, subheading, text, button, and divider (for the label) */
+  content?: string;
+  /** Button style variant. Default: 'primary' */
+  variant?: PaywallSlotItemVariant;
+  /** Click handler for button items */
+  onClick?: () => void;
+}
+
+/**
+ * Loosely-typed ReactDOM adapter — matches both React 18 (`createRoot`) and
+ * React 16/17 (`render`) without pulling React into the SDK's own bundle.
+ */
+export interface ReactDOMAdapter {
+  /** React 18+ */
+  createRoot?(container: Element): { render(node: unknown): void; unmount(): void };
+  /** React 16/17 */
+  render?(node: unknown, container: Element, callback?: () => void): void;
+}
+
 // ─── SDK configuration ───────────────────────────────────────────────────────
 
 export interface SDKConfig {
@@ -119,8 +144,49 @@ export interface SDKConfig {
   /** Visual theme options */
   theme?: SDKTheme;
 
-  /** Custom HTML template string for the paywall overlay */
-  paywallTemplate?: string;
+  /**
+   * Paywall display mode.
+   * - `'inline'` — panel sits below the teaser content in the page flow (original behaviour)
+   * - `'overlay'` — full-width panel that renders below the gated content (default)
+   *
+   * Default: `'overlay'`
+   */
+  paywallMode?: 'inline' | 'overlay';
+
+  /**
+   * Your ReactDOM instance. Required when `paywallTopSlot` is a React element.
+   * Supports React 18 (`createRoot`) and React 16/17 (`render`).
+   *
+   * @example
+   * import ReactDOM from 'react-dom/client'; // React 18
+   * ContentCredits.init({ reactDOM, paywallTopSlot: <DonationWidget /> });
+   */
+  reactDOM?: ReactDOMAdapter;
+
+  /**
+   * Content to render in the top section of the paywall panel, above the SDK's
+   * own unlock UI.
+   *
+   * Accepts:
+   * - A React element (JSX) — requires `reactDOM` to also be set
+   * - A structured `PaywallSlotItem[]` array — SDK renders & styles the items
+   * - A plain `HTMLElement` — appended directly into the slot container
+   * - A factory `(container: HTMLElement) => void` — called with the slot DOM node
+   *
+   * @example React widget
+   * paywallTopSlot: <DonationWidget />   // also set reactDOM
+   *
+   * @example Structured items
+   * paywallTopSlot: [
+   *   { type: 'heading', content: 'Donate to access this story.' },
+   *   { type: 'button',  content: 'See Donation Options', variant: 'primary', onClick: openDonate },
+   * ]
+   */
+  paywallTopSlot?:
+    | PaywallSlotItem[]
+    | HTMLElement
+    | ((container: HTMLElement) => void)
+    | Record<string, unknown>;  // React element (has $$typeof) — detected at runtime
 
   /** Called when the user is granted access to the article */
   onAccessGranted?: () => void;
@@ -212,7 +278,8 @@ export interface SDKTheme {
 }
 
 export interface ResolvedConfig extends Required<Omit<SDKConfig,
-  | 'paywallTemplate'
+  | 'paywallTopSlot'
+  | 'reactDOM'
   | 'onAccessGranted'
   | 'onStateChange'
   | 'onReady'
@@ -230,7 +297,9 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   pageTitle: string;
   apiBaseUrl: string;
   accountsUrl: string;
-  paywallTemplate?: string;
+  paywallMode: 'inline' | 'overlay';
+  paywallTopSlot?: SDKConfig['paywallTopSlot'];
+  reactDOM?: ReactDOMAdapter;
   onAccessGranted?: () => void;
   onStateChange?: (state: SDKState) => void;
   onReady?: (state: SDKState) => void;

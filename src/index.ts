@@ -105,6 +105,7 @@ export class ContentCredits {
     const earlyGate = createGate({
       selector: this.config.contentSelector,
       teaserParagraphs: this.config.teaserParagraphs,
+      paywallMode: this.config.paywallMode,
     });
     if (!this.config.headless) earlyGate.hide();
 

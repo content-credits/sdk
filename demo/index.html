@@ -247,6 +247,12 @@
   <label>Teaser ¶s</label>
   <input type="number" id="inp-teaser" value="2" min="0" max="10" />
 
+  <label>Mode</label>
+  <select id="sel-mode" style="background:#2a2a3e;border:1px solid #444;color:#fff;border-radius:6px;padding:5px 10px;font-size:12px;outline:none;">
+    <option value="overlay">overlay (default)</option>
+    <option value="inline">inline (legacy)</option>
+  </select>
+
   <label class="check-label">
     <input type="checkbox" id="chk-comments" checked />
     Comments
@@ -539,6 +545,7 @@
         contentSelector: E('inp-selector').value.trim() || '.cc-premium-content',
         teaserParagraphs: parseInt(E('inp-teaser').value, 10) || 2,
         enableComments: E('chk-comments').checked,
+        paywallMode: E('sel-mode').value,
         debug: true,
       });
 

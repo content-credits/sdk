@@ -1,7 +1,7 @@
 import { createInlineShadowHost, injectStyles, removeShadowHost } from '../ui/shadow.js';
 import { getPaywallStyles } from '../ui/styles.js';
 import { el, setTextContent } from '../ui/sanitize.js';
-import type { ResolvedConfig } from '../types/index.js';
+import type { ResolvedConfig, PaywallSlotItem, ReactDOMAdapter } from '../types/index.js';
 
 const HOST_ID = 'cc-paywall-host';
 
@@ -32,11 +32,12 @@ export interface PaywallRenderer {
 
 export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   let root: ShadowRoot | null = null;
-  let overlay: HTMLElement | null = null;
+  // In inline mode: the single panel div. In overlay mode: the body section only.
+  let body: HTMLElement | null = null;
+  // Tracks a mounted React 18 root so we can unmount it on destroy.
+  let reactRoot: { unmount(): void } | null = null;
 
   function init(): void {
-    // Insert the shadow host immediately after the content element so the
-    // paywall panel flows inline below the teaser — no modal, no backdrop.
     const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
     if (!contentEl) return;
 
@@ -44,9 +45,55 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     root = shadowRoot;
     injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
 
-    overlay = el('div');
-    overlay.className = 'cc-paywall-inline';
-    root.appendChild(overlay);
+    if (config.paywallMode === 'overlay') {
+      initOverlay(root, contentEl);
+    } else {
+      initInline(root);
+    }
+  }
+
+  function initInline(shadowRoot: ShadowRoot): void {
+    body = el('div');
+    body.className = 'cc-paywall-inline';
+    shadowRoot.appendChild(body);
+  }
+
+  function initOverlay(shadowRoot: ShadowRoot, contentEl: HTMLElement): void {
+    const panel = el('div');
+    panel.className = 'cc-paywall-overlay';
+
+    // Gradient that visually fades the article into the white panel.
+    // We read the computed background of the content element's parent so the
+    // gradient blends correctly on sites with non-white backgrounds.
+    const gradient = el('div');
+    gradient.className = 'cc-paywall-overlay-gradient';
+    const parentBg = getComputedStyle(contentEl.parentElement ?? contentEl).backgroundColor;
+    if (parentBg && parentBg !== 'rgba(0, 0, 0, 0)' && parentBg !== 'transparent') {
+      gradient.style.background = `linear-gradient(to bottom, transparent 0%, ${parentBg} 100%)`;
+    }
+    panel.appendChild(gradient);
+
+    // Top slot — client content
+    const slot = el('div');
+    slot.className = 'cc-paywall-overlay-slot';
+    reactRoot = mountTopSlot(slot, config.paywallTopSlot, config.reactDOM) ?? null;
+    panel.appendChild(slot);
+
+    // Only render the "or" divider between slot and body when the slot has content
+    if (config.paywallTopSlot) {
+      const divider = el('div');
+      divider.className = 'cc-slot-divider';
+      divider.style.cssText = 'margin: 4px auto 0; padding: 0 24px;';
+      divider.textContent = 'or';
+      panel.appendChild(divider);
+    }
+
+    // Our SDK's unlock body
+    body = el('div');
+    body.className = 'cc-paywall-overlay-body';
+    panel.appendChild(body);
+
+    shadowRoot.appendChild(panel);
   }
 
   function render(
@@ -54,27 +101,24 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     callbacks: PaywallRendererCallbacks,
     meta?: { requiredCredits?: number | null; creditBalance?: number | null }
   ): void {
-    // During the initial access check the content is already hidden by the
-    // gate — no need to show a spinner in the paywall slot.
     if (state === 'checking') return;
-    if (!overlay) init();
-    if (!overlay) return;
+    if (!body) init();
+    if (!body) return;
 
-    // Clear previous content
-    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+    while (body.firstChild) body.removeChild(body.firstChild);
 
     switch (state) {
       case 'login':
-        renderLogin(overlay, callbacks);
+        renderLogin(body, callbacks);
         break;
       case 'purchase':
-        renderPurchase(overlay, callbacks, meta?.requiredCredits ?? null);
+        renderPurchase(body, callbacks, meta?.requiredCredits ?? null);
         break;
       case 'insufficient':
-        renderInsufficient(overlay, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
+        renderInsufficient(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
         break;
       case 'loading':
-        renderLoading(overlay);
+        renderLoading(body);
         break;
       case 'granted':
         destroy();
@@ -83,10 +127,14 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   }
 
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
-    parent.appendChild(el('h2', 'This article requires a subscription'));
-    parent.appendChild(el('p', 'Log in with your Content Credits account to unlock this article.'));
+    // Only show the heading/description in inline mode; in overlay mode the
+    // client's top slot already provides the article context.
+    if (config.paywallMode === 'inline') {
+      parent.appendChild(el('h2', 'This article requires a subscription'));
+      parent.appendChild(el('p', 'Log in with your Content Credits account to unlock this article.'));
+    }
 
-    const btn = el('button', 'Login & Buy with Content Credits');
+    const btn = el('button', 'Login & Unlock with Content Credits');
     btn.className = 'cc-btn cc-btn-primary';
     btn.addEventListener('click', () => { void cb.onLogin(); });
     parent.appendChild(btn);
@@ -95,18 +143,23 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   }
 
   function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null): void {
-    parent.appendChild(el('h2', 'Unlock this article'));
+    if (config.paywallMode === 'inline') {
+      parent.appendChild(el('h2', 'Unlock this article'));
 
-    if (credits !== null) {
-      const badge = el('span', `${credits} credit${credits !== 1 ? 's' : ''}`);
-      badge.className = 'cc-credit-badge';
-      parent.appendChild(badge);
+      if (credits !== null) {
+        const badge = el('span', `${credits} credit${credits !== 1 ? 's' : ''}`);
+        badge.className = 'cc-credit-badge';
+        parent.appendChild(badge);
+      }
+
+      parent.appendChild(el('p', 'Use your Content Credits balance to instantly access this premium article.'));
     }
 
-    parent.appendChild(el('p', 'Use your Content Credits balance to instantly access this premium article.'));
-
-    const btn = el('button', credits !== null ? `Buy for ${credits} Credit${credits !== 1 ? 's' : ''}` : 'Buy with Content Credits');
-    btn.className = 'cc-btn cc-btn-primary';
+    const label = credits !== null
+      ? `Unlock Just This Story · ${credits} Credit${credits !== 1 ? 's' : ''}`
+      : 'Unlock Just This Story';
+    const btn = el('button', label);
+    btn.className = 'cc-btn cc-btn-outline';
     btn.addEventListener('click', () => { void cb.onPurchase(); });
     parent.appendChild(btn);
 
@@ -119,11 +172,13 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     required: number | null,
     available: number | null
   ): void {
-    parent.appendChild(el('h2', 'Not enough credits'));
+    if (config.paywallMode === 'inline') {
+      parent.appendChild(el('h2', 'Not enough credits'));
+    }
 
     const detail = required !== null && available !== null
-      ? `You need ${required} credit${required !== 1 ? 's' : ''} but have ${available}. Top up to unlock this article.`
-      : 'You don\'t have enough credits to unlock this article. Purchase more to continue.';
+      ? `You need ${required} credit${required !== 1 ? 's' : ''} but only have ${available}.`
+      : 'You don\'t have enough credits to unlock this article.';
 
     parent.appendChild(el('p', detail));
 
@@ -137,7 +192,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
   function renderLoading(parent: HTMLElement): void {
     const btn = el('button');
-    btn.className = 'cc-btn cc-btn-primary';
+    btn.className = 'cc-btn cc-btn-outline';
     btn.disabled = true;
 
     const spinner = el('span');
@@ -161,8 +216,8 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   }
 
   function setButtonLoading(loading: boolean): void {
-    if (!overlay) return;
-    const btn = overlay.querySelector<HTMLButtonElement>('.cc-btn');
+    if (!body) return;
+    const btn = body.querySelector<HTMLButtonElement>('.cc-btn');
     if (!btn) return;
     btn.disabled = loading;
     if (loading) {
@@ -175,10 +230,123 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   }
 
   function destroy(): void {
+    reactRoot?.unmount();
+    reactRoot = null;
     removeShadowHost(HOST_ID);
     root = null;
-    overlay = null;
+    body = null;
   }
 
   return { init, render, setButtonLoading, destroy };
+}
+
+// ─── Top slot mounting ───────────────────────────────────────────────────────
+
+function mountTopSlot(
+  container: HTMLElement,
+  slot: ResolvedConfig['paywallTopSlot'],
+  reactDOM: ReactDOMAdapter | undefined
+): { unmount(): void } | undefined {
+  if (!slot) return undefined;
+
+  // React element — detected by the $$typeof symbol all React elements carry.
+  if (isReactElement(slot)) {
+    if (!reactDOM) {
+      console.warn('[ContentCredits] paywallTopSlot is a React element but `reactDOM` was not provided. ' +
+        'Pass your ReactDOM instance: ContentCredits.init({ reactDOM, paywallTopSlot: <Widget /> })');
+      return undefined;
+    }
+    return mountReactElement(container, slot, reactDOM);
+  }
+
+  if (typeof slot === 'function') {
+    (slot as (c: HTMLElement) => void)(container);
+    return undefined;
+  }
+
+  if (slot instanceof HTMLElement) {
+    container.appendChild(slot);
+    return undefined;
+  }
+
+  // Structured PaywallSlotItem[]
+  for (const item of slot as PaywallSlotItem[]) {
+    container.appendChild(renderSlotItem(item));
+  }
+  return undefined;
+}
+
+function isReactElement(value: unknown): boolean {
+  // All React elements (JSX) have a $$typeof symbol set to Symbol.for('react.element')
+  // or, in older builds, the integer 0xeac7.
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    '$$typeof' in value &&
+    !Array.isArray(value) &&
+    !(value instanceof HTMLElement)
+  );
+}
+
+function mountReactElement(
+  container: HTMLElement,
+  element: unknown,
+  reactDOM: ReactDOMAdapter
+): { unmount(): void } | undefined {
+  // React 18+: createRoot
+  if (typeof reactDOM.createRoot === 'function') {
+    const root = reactDOM.createRoot(container);
+    root.render(element);
+    return root;
+  }
+  // React 16/17: legacy render (no unmount handle needed — it cleans up on container removal)
+  if (typeof reactDOM.render === 'function') {
+    reactDOM.render(element, container);
+    return {
+      unmount() {
+        // ReactDOM.unmountComponentAtNode is the React 16/17 equivalent
+        const rdom = reactDOM as unknown as { unmountComponentAtNode?(el: Element): void };
+        rdom.unmountComponentAtNode?.(container);
+      },
+    };
+  }
+  console.warn('[ContentCredits] The provided `reactDOM` has neither `createRoot` nor `render`. ' +
+    'Pass a valid ReactDOM instance.');
+  return undefined;
+}
+
+function renderSlotItem(item: PaywallSlotItem): HTMLElement {
+  switch (item.type) {
+    case 'heading': {
+      const h = el('span', item.content ?? '');
+      h.className = 'cc-slot-heading';
+      return h;
+    }
+    case 'subheading': {
+      const h = el('span', item.content ?? '');
+      h.className = 'cc-slot-subheading';
+      return h;
+    }
+    case 'text': {
+      const p = el('span', item.content ?? '');
+      p.className = 'cc-slot-text';
+      return p;
+    }
+    case 'button': {
+      const btn = el('button', item.content ?? '');
+      const variantClass = item.variant === 'outline'
+        ? 'cc-btn-outline'
+        : item.variant === 'secondary'
+          ? 'cc-btn-secondary'
+          : 'cc-btn-primary';
+      btn.className = `cc-btn ${variantClass}`;
+      if (item.onClick) btn.addEventListener('click', item.onClick);
+      return btn;
+    }
+    case 'divider': {
+      const d = el('div', item.content ?? '');
+      d.className = 'cc-slot-divider';
+      return d;
+    }
+  }
 }
