@@ -1,6 +1,6 @@
 {
   "name": "@contentcredits/sdk",
-  "version": "2.12.1",
+  "version": "2.12.0",
   "description": "Content Credits JS SDK — drop-in paywall and comments for any website",
   "author": "Content Credits",
   "license": "Apache-2.0",
