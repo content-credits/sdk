@@ -97,7 +97,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
     // Add bottom padding to the content element so the fixed panel
     // doesn't overlap the last readable line of the teaser.
-    contentEl.style.paddingBottom = '200px';
+    contentEl.style.paddingBottom = '240px';
 
     // Top slot — client content
     const slot = el('div');
@@ -111,7 +111,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     if (config.paywallTopSlot) {
       const divider = el('div');
       divider.className = 'cc-slot-divider';
-      divider.style.cssText = 'margin: 6px 24px 0;';
+      divider.style.cssText = 'margin: 12px 32px 0;';
       panel.appendChild(divider);
     }
 
