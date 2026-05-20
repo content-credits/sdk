@@ -10,7 +10,7 @@ export type PaywallUIState =
   | 'login'         // user not logged in
   | 'purchase'      // logged in but no access
   | 'insufficient'  // logged in but not enough credits
-  | 'loading'       // purchase in progress
+  | 'loading'       // purchase/login in progress
   | 'granted'       // access granted, overlay removed
 
 export interface PaywallRendererCallbacks {
@@ -74,7 +74,24 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     gradient.className = 'cc-paywall-overlay-gradient';
     const pageBg = getComputedStyle(document.body).backgroundColor;
     if (pageBg && pageBg !== 'rgba(0, 0, 0, 0)' && pageBg !== 'transparent') {
-      gradient.style.background = `linear-gradient(to bottom, transparent 0%, ${pageBg} 100%)`;
+      // Multi-stop gradient so the fade reads as natural depth rather than a
+      // sharp white overlay — same curve as the CSS default, but using the
+      // actual page background colour.
+      gradient.style.background = [
+        'linear-gradient(to bottom,',
+        `transparent 0%,`,
+        `transparent 18%,`,
+        // Mid-stops approximate a cubic ease-in curve
+        `color-mix(in srgb, ${pageBg} 30%, transparent) 45%,`,
+        `color-mix(in srgb, ${pageBg} 75%, transparent) 68%,`,
+        `${pageBg} 100%`,
+        ')',
+      ].join(' ');
+
+      // Fallback for browsers without color-mix (pre-2023) — simple 2-stop
+      if (!CSS.supports('color', 'color-mix(in srgb, red 50%, blue)')) {
+        gradient.style.background = `linear-gradient(to bottom, transparent 0%, ${pageBg} 100%)`;
+      }
     }
     panel.appendChild(gradient);
 
@@ -88,12 +105,13 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     reactRoot = mountTopSlot(slot, config.paywallTopSlot, config.reactDOM) ?? null;
     panel.appendChild(slot);
 
-    // Only render the "or" divider between slot and body when the slot has content
+    // Visual separator between slot and body — only when the slot has content.
+    // Rendered as a plain horizontal line (no "or" text) so it works regardless
+    // of whether the slot contains competing CTAs or just descriptive copy.
     if (config.paywallTopSlot) {
       const divider = el('div');
       divider.className = 'cc-slot-divider';
-      divider.style.cssText = 'margin: 4px auto 0; padding: 0 24px;';
-      divider.textContent = 'or';
+      divider.style.cssText = 'margin: 6px 24px 0;';
       panel.appendChild(divider);
     }
 
@@ -114,6 +132,20 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     if (!body) init();
     if (!body) return;
 
+    // Loading: don't rebuild the DOM — freeze the active button in place.
+    // This prevents the panel from shrinking/shifting when a purchase or
+    // login is in progress, which would be jarring given the panel's fixed position.
+    if (state === 'loading') {
+      setButtonLoading(true);
+      return;
+    }
+
+    if (state === 'granted') {
+      destroy();
+      return;
+    }
+
+    // Full state transition — clear and rebuild the body.
     while (body.firstChild) body.removeChild(body.firstChild);
 
     switch (state) {
@@ -126,24 +158,22 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       case 'insufficient':
         renderInsufficient(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
         break;
-      case 'loading':
-        renderLoading(body);
-        break;
-      case 'granted':
-        destroy();
-        break;
     }
   }
 
+  // ── State renderers ────────────────────────────────────────────────────────
+
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
-    // Only show the heading/description in inline mode; in overlay mode the
-    // client's top slot already provides the article context.
+    // In overlay mode the slot already provides article context, so the body
+    // just needs the CTA. In inline mode we add heading + description.
     if (config.paywallMode === 'inline') {
       parent.appendChild(el('h2', 'This article requires a subscription'));
-      parent.appendChild(el('p', 'Log in with your Content Credits account to unlock this article.'));
+      const detail = el('p', 'Sign in to your Content Credits account to unlock this article.');
+      detail.className = 'cc-state-detail';
+      parent.appendChild(detail);
     }
 
-    const btn = el('button', 'Login & Unlock with Content Credits');
+    const btn = el('button', 'Sign in to read');
     btn.className = 'cc-btn cc-btn-primary';
     btn.addEventListener('click', () => { void cb.onLogin(); });
     parent.appendChild(btn);
@@ -154,21 +184,17 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null): void {
     if (config.paywallMode === 'inline') {
       parent.appendChild(el('h2', 'Unlock this article'));
-
-      if (credits !== null) {
-        const badge = el('span', `${credits} credit${credits !== 1 ? 's' : ''}`);
-        badge.className = 'cc-credit-badge';
-        parent.appendChild(badge);
-      }
-
-      parent.appendChild(el('p', 'Use your Content Credits balance to instantly access this premium article.'));
+      const detail = el('p', 'Use your Content Credits balance to instantly access this article.');
+      detail.className = 'cc-state-detail';
+      parent.appendChild(detail);
     }
 
+    // Credits shown inline in the button label — clear and scannable.
     const label = credits !== null
-      ? `Unlock Just This Story · ${credits} Credit${credits !== 1 ? 's' : ''}`
-      : 'Unlock Just This Story';
+      ? `Unlock · ${credits} credit${credits !== 1 ? 's' : ''}`
+      : 'Unlock article';
     const btn = el('button', label);
-    btn.className = 'cc-btn cc-btn-outline';
+    btn.className = 'cc-btn cc-btn-primary';
     btn.addEventListener('click', () => { void cb.onPurchase(); });
     parent.appendChild(btn);
 
@@ -185,31 +211,21 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       parent.appendChild(el('h2', 'Not enough credits'));
     }
 
-    const detail = required !== null && available !== null
-      ? `You need ${required} credit${required !== 1 ? 's' : ''} but only have ${available}.`
-      : 'You don\'t have enough credits to unlock this article.';
+    const detail = el('p');
+    detail.className = 'cc-state-detail';
+    if (required !== null && available !== null) {
+      detail.textContent = `This article costs ${required} credit${required !== 1 ? 's' : ''} — you have ${available}.`;
+    } else {
+      detail.textContent = "You don't have enough credits to unlock this article.";
+    }
+    parent.appendChild(detail);
 
-    parent.appendChild(el('p', detail));
-
-    const btn = el('button', 'Buy More Credits');
+    const btn = el('button', 'Top up credits');
     btn.className = 'cc-btn cc-btn-primary';
     btn.addEventListener('click', () => cb.onBuyMoreCredits());
     parent.appendChild(btn);
 
     parent.appendChild(poweredBy());
-  }
-
-  function renderLoading(parent: HTMLElement): void {
-    const btn = el('button');
-    btn.className = 'cc-btn cc-btn-outline';
-    btn.disabled = true;
-
-    const spinner = el('span');
-    spinner.className = 'cc-spinner';
-    btn.appendChild(spinner);
-    btn.appendChild(document.createTextNode(' Processing…'));
-
-    parent.appendChild(btn);
   }
 
   function poweredBy(): HTMLElement {
@@ -224,12 +240,18 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     return div;
   }
 
+  // ── Button loading state ───────────────────────────────────────────────────
+
   function setButtonLoading(loading: boolean): void {
     if (!body) return;
     const btn = body.querySelector<HTMLButtonElement>('.cc-btn');
     if (!btn) return;
+
     btn.disabled = loading;
+
     if (loading) {
+      // Replace button content with spinner + label, preserving button size.
+      // The spinner is white on the primary colour background — matches all states.
       const spinner = el('span');
       spinner.className = 'cc-spinner';
       setTextContent(btn, '');
@@ -237,6 +259,8 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       btn.appendChild(document.createTextNode(' Processing…'));
     }
   }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   function destroy(): void {
     reactRoot?.unmount();
