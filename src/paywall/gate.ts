@@ -55,13 +55,15 @@ export function createGate(options: GateOptions): Gate {
           (n as HTMLElement).setAttribute?.('data-cc-hidden', 'true');
         }
       });
-    } else {
-      // Not enough paragraphs to split — hide the entire content
+    } else if (options.teaserParagraphs === 0) {
+      // Explicitly hide everything — caller requested no teaser (teaserParagraphs: 0)
       hiddenNodes = Array.from(contentEl.childNodes);
       hiddenNodes.forEach(n => {
         if (n instanceof HTMLElement) n.style.display = 'none';
       });
     }
+    // else: content has at most as many paragraphs as the teaser threshold allows
+    // (e.g. server-side teaser splitting already trimmed the DOM) — show everything
 
     contentEl.setAttribute(GATE_ATTR, 'true');
     gated = true;
