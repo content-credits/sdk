@@ -105,16 +105,6 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     reactRoot = mountTopSlot(slot, config.paywallTopSlot, config.reactDOM) ?? null;
     panel.appendChild(slot);
 
-    // Visual separator between slot and body — only when the slot has content.
-    // Rendered as a plain horizontal line (no "or" text) so it works regardless
-    // of whether the slot contains competing CTAs or just descriptive copy.
-    if (config.paywallTopSlot) {
-      const divider = el('div');
-      divider.className = 'cc-slot-divider';
-      divider.style.cssText = 'margin: 12px 32px 0;';
-      panel.appendChild(divider);
-    }
-
     // Our SDK's unlock body
     body = el('div');
     body.className = 'cc-paywall-overlay-body';

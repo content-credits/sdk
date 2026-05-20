@@ -72,7 +72,7 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* Top slot — publisher-supplied content */
     .cc-paywall-overlay-slot {
-      padding: 26px 32px 0;
+      padding: 28px 32px 4px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -81,11 +81,11 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* SDK's own action section below the slot */
     .cc-paywall-overlay-body {
-      padding: 18px 32px 36px;
+      padding: 20px 32px 36px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
       text-align: center;
     }
 
@@ -235,8 +235,8 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* ─── Mobile: tighter vertical padding ──────────────────────────────── */
     @media (max-width: 480px) {
-      .cc-paywall-overlay-slot { padding: 20px 20px 0; gap: 6px; }
-      .cc-paywall-overlay-body { padding: 14px 20px 28px; gap: 14px; }
+      .cc-paywall-overlay-slot { padding: 22px 20px 2px; gap: 6px; }
+      .cc-paywall-overlay-body { padding: 16px 20px 28px; gap: 12px; }
       .cc-slot-heading { font-size: 17px; }
     }
   `;
