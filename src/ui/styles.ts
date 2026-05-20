@@ -55,10 +55,10 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
      */
     .cc-paywall-overlay-gradient {
       position: absolute;
-      top: -160px;
+      top: -180px;
       left: 0;
       right: 0;
-      height: 160px;
+      height: 180px;
       pointer-events: none;
       background: linear-gradient(
         to bottom,
@@ -72,20 +72,20 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* Top slot — publisher-supplied content */
     .cc-paywall-overlay-slot {
-      padding: 18px 24px 0;
+      padding: 26px 32px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 5px;
+      gap: 8px;
     }
 
     /* SDK's own action section below the slot */
     .cc-paywall-overlay-body {
-      padding: 14px 24px 26px;
+      padding: 18px 32px 36px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 16px;
       text-align: center;
     }
 
@@ -235,8 +235,8 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* ─── Mobile: tighter vertical padding ──────────────────────────────── */
     @media (max-width: 480px) {
-      .cc-paywall-overlay-slot { padding: 14px 16px 0; gap: 4px; }
-      .cc-paywall-overlay-body { padding: 12px 16px 20px; gap: 10px; }
+      .cc-paywall-overlay-slot { padding: 20px 20px 0; gap: 6px; }
+      .cc-paywall-overlay-body { padding: 14px 20px 28px; gap: 14px; }
       .cc-slot-heading { font-size: 17px; }
     }
   `;
