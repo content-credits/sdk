@@ -16,7 +16,7 @@ const config = {
   headless: false,
   apiBaseUrl: 'https://api.contentcredits.com',
   accountsUrl: 'https://accounts.contentcredits.com',
-  paywallTemplate: undefined,
+  paywallMode: 'inline' as const,
   onAccessGranted: undefined,
   onStateChange: undefined,
   onReady: undefined,
@@ -46,7 +46,7 @@ describe('gate', () => {
   });
 
   it('hides content after teaser paragraphs and restores it on reveal', () => {
-    const gate = createGate({ selector: '#article', teaserParagraphs: 2 });
+    const gate = createGate({ selector: '#article', teaserParagraphs: 2, paywallMode: 'inline' });
     expect(gate.hide()).toBe(true);
 
     const article = document.getElementById('article')!;
@@ -92,7 +92,7 @@ describe('paywall renderer', () => {
     expect(onPurchase).toHaveBeenCalledTimes(1);
 
     renderer.render('insufficient', { onLogin, onPurchase, onBuyMoreCredits }, { requiredCredits: 4, creditBalance: 1 });
-    expect(document.getElementById('cc-paywall-host')!.shadowRoot!.textContent).toContain('You need 4 credits but have 1');
+    expect(document.getElementById('cc-paywall-host')!.shadowRoot!.textContent).toContain('You need 4 credits but only have 1');
 
     renderer.render('loading', { onLogin, onPurchase, onBuyMoreCredits });
     renderer.setButtonLoading(true);
