@@ -2,183 +2,229 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
   return `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Inline paywall panel — sits below teaser in the page flow ── */
+    /* ─── Inline paywall panel ──────────────────────────────────────────── */
     .cc-paywall-inline {
       width: 100%;
-      padding: 36px 24px 32px;
+      padding: 32px 28px 28px;
       background: #fff;
-      border: 1px solid #e5e7eb;
+      border: 1px solid #e2e8f0;
       border-top: 3px solid ${primaryColor};
       border-radius: 0 0 12px 12px;
       text-align: center;
       font-family: ${fontFamily};
-      box-sizing: border-box;
     }
-
     .cc-paywall-inline h2 {
       font-size: 20px;
       font-weight: 700;
-      color: #111827;
+      color: #0f172a;
       margin-bottom: 8px;
+      letter-spacing: -0.015em;
+      line-height: 1.25;
     }
-
     .cc-paywall-inline p {
       font-size: 14px;
-      color: #6b7280;
-      margin-bottom: 24px;
+      color: #64748b;
       line-height: 1.6;
+      margin-bottom: 20px;
     }
 
-    /* ── Overlay paywall panel — full-width white panel below gated content ── */
+    /* ─── Overlay paywall panel ─────────────────────────────────────────── */
+    /*
+     * Fixed to the bottom of the viewport, full width.
+     * Elevation uses layered shadows — no harsh border-top line.
+     * Thin hairline at the top (1px shadow) + ambient shadow for depth.
+     */
     .cc-paywall-overlay {
-      /* Fixed to the bottom of the viewport — always visible, full width */
       position: fixed;
       bottom: 0;
       left: 0;
       width: 100%;
       background: #fff;
-      box-shadow: 0 -8px 40px rgba(0,0,0,0.10);
-      border-top: 1px solid #e5e7eb;
+      box-shadow:
+        0 -1px 0 rgba(15, 23, 42, 0.07),
+        0 -4px 12px rgba(15, 23, 42, 0.04),
+        0 -24px 64px rgba(15, 23, 42, 0.07);
       font-family: ${fontFamily};
     }
 
-    /* Gradient that fades the article into the panel.
-       Sits above the panel via position:absolute + negative top. */
+    /*
+     * Gradient that fades the article content into the panel.
+     * Multi-stop with a cubic-ease-ish curve so it reads as depth,
+     * not as an obvious white overlay.
+     * initOverlay() overrides this via inline style with the real page bg colour.
+     */
     .cc-paywall-overlay-gradient {
       position: absolute;
-      top: -120px;
+      top: -160px;
       left: 0;
       right: 0;
-      height: 120px;
-      background: linear-gradient(to bottom, transparent 0%, #fff 100%);
+      height: 160px;
       pointer-events: none;
+      background: linear-gradient(
+        to bottom,
+        transparent        0%,
+        rgba(255,255,255,0.08)  30%,
+        rgba(255,255,255,0.55)  60%,
+        rgba(255,255,255,0.90)  82%,
+        #ffffff            100%
+      );
     }
 
-    /* Top slot — client-supplied content */
+    /* Top slot — publisher-supplied content */
     .cc-paywall-overlay-slot {
-      padding: 20px 24px 0;
+      padding: 18px 24px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 5px;
     }
 
-    /* Our SDK's unlock section below the slot */
+    /* SDK's own action section below the slot */
     .cc-paywall-overlay-body {
-      padding: 16px 24px 24px;
+      padding: 14px 24px 26px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 0;
+      gap: 12px;
       text-align: center;
     }
 
-    /* Slot item — heading */
+    /* ─── Slot typography ───────────────────────────────────────────────── */
     .cc-slot-heading {
-      font-size: 22px;
+      font-size: 19px;
       font-weight: 700;
-      color: #111827;
+      color: #0f172a;
       text-align: center;
       line-height: 1.3;
+      letter-spacing: -0.015em;
     }
-
-    /* Slot item — subheading */
     .cc-slot-subheading {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 600;
-      color: #374151;
+      color: #1e293b;
       text-align: center;
     }
-
-    /* Slot item — body text */
     .cc-slot-text {
-      font-size: 14px;
-      color: #6b7280;
+      font-size: 13px;
+      color: #64748b;
       text-align: center;
-      line-height: 1.6;
+      line-height: 1.55;
     }
 
-    /* Slot item — divider with optional label */
+    /* Visual separator between slot and body */
     .cc-slot-divider {
       display: flex;
       align-items: center;
-      gap: 12px;
-      width: 100%;
-      max-width: 320px;
-      font-size: 13px;
-      color: #9ca3af;
+      gap: 10px;
+      font-size: 12px;
+      color: #94a3b8;
     }
     .cc-slot-divider::before,
     .cc-slot-divider::after {
       content: '';
       flex: 1;
-      border-top: 1px solid #e5e7eb;
+      height: 1px;
+      background: #e2e8f0;
     }
 
+    /* ─── Buttons ───────────────────────────────────────────────────────── */
+    /*
+     * All primary paywall CTAs use .cc-btn-primary (filled, brand colour).
+     * .cc-btn-ghost is for low-emphasis secondary links.
+     * No outline variant in paywall states — one clear hierarchy.
+     */
     .cc-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      height: 44px;
-      padding: 0 20px;
+      gap: 7px;
+      height: 46px;
+      padding: 0 22px;
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       font-family: ${fontFamily};
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.15s ease, transform 0.1s ease;
+      transition: filter 0.15s ease, transform 0.1s ease;
       width: 100%;
-      max-width: 320px;
+      max-width: 380px;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
-    .cc-btn:hover:not(:disabled) { opacity: 0.88; }
-    .cc-btn:active:not(:disabled) { transform: scale(0.98); }
+    .cc-btn:hover:not(:disabled) { filter: brightness(1.07); }
+    .cc-btn:active:not(:disabled) { transform: scale(0.975); }
     .cc-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-    .cc-btn-primary {
-      background: ${primaryColor};
-      color: #fff;
+    .cc-btn-primary  { background: ${primaryColor}; color: #fff; }
+    .cc-btn-secondary { background: #0f172a; color: #fff; }
+
+    /* Ghost: text-link-style secondary action */
+    .cc-btn-ghost {
+      background: transparent;
+      color: #64748b;
+      height: 36px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+    .cc-btn-ghost:hover:not(:disabled) {
+      color: #0f172a;
+      background: #f1f5f9;
+      filter: none;
     }
 
-    .cc-btn-secondary {
-      background: #111827;
-      color: #fff;
-      margin-top: 10px;
-    }
-
+    /* Kept for backwards-compat with paywallTopSlot button items */
     .cc-btn-outline {
       background: transparent;
-      color: #111827;
-      border: 2px solid #111827;
-      margin-top: 10px;
+      color: #0f172a;
+      border: 1.5px solid #cbd5e1;
+    }
+    .cc-btn-outline:hover:not(:disabled) {
+      border-color: #94a3b8;
+      filter: none;
+      background: #f8fafc;
     }
 
+    /* ─── Credit badge ───────────────────────────────────────────────────── */
     .cc-credit-badge {
-      display: inline-block;
-      background: #fef3c7;
-      color: #92400e;
+      display: inline-flex;
+      align-items: center;
+      background: #f1f5f9;
+      color: #475569;
       border-radius: 20px;
-      padding: 2px 10px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 16px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
 
+    /* ─── Inline state description text ─────────────────────────────────── */
+    .cc-state-detail {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.6;
+    }
+
+    /* ─── Spinner (lives inside .cc-btn-primary while loading) ──────────── */
     .cc-spinner {
-      width: 18px; height: 18px;
-      border: 2px solid rgba(255,255,255,0.4);
-      border-top-color: #fff;
+      display: inline-block;
+      width: 17px;
+      height: 17px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: rgba(255, 255, 255, 0.95);
       border-radius: 50%;
-      animation: cc-spin 0.7s linear infinite;
+      animation: cc-spin 0.6s linear infinite;
       flex-shrink: 0;
     }
     @keyframes cc-spin { to { transform: rotate(360deg); } }
 
+    /* ─── "Powered by" attribution ───────────────────────────────────────── */
     .cc-powered-by {
-      margin-top: 20px;
-      font-size: 12px;
-      color: #9ca3af;
+      font-size: 11px;
+      color: #94a3b8;
+      letter-spacing: 0.01em;
     }
     .cc-powered-by a {
       color: ${primaryColor};
@@ -186,6 +232,13 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       font-weight: 600;
     }
     .cc-powered-by a:hover { text-decoration: underline; }
+
+    /* ─── Mobile: tighter vertical padding ──────────────────────────────── */
+    @media (max-width: 480px) {
+      .cc-paywall-overlay-slot { padding: 14px 16px 0; gap: 4px; }
+      .cc-paywall-overlay-body { padding: 12px 16px 20px; gap: 10px; }
+      .cc-slot-heading { font-size: 17px; }
+    }
   `;
 }
 
