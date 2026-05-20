@@ -31,7 +31,9 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* ── Overlay paywall panel — full-width white panel below gated content ── */
     .cc-paywall-overlay {
-      width: 100%;
+      /* Break out of any max-width container to span the full viewport */
+      width: 100vw;
+      margin-left: calc(50% - 50vw);
       background: #fff;
       font-family: ${fontFamily};
     }
