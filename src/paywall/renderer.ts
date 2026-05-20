@@ -1,4 +1,4 @@
-import { createInlineShadowHost, injectStyles, removeShadowHost } from '../ui/shadow.js';
+import { createShadowHost, createInlineShadowHost, injectStyles, removeShadowHost } from '../ui/shadow.js';
 import { getPaywallStyles } from '../ui/styles.js';
 import { el, setTextContent } from '../ui/sanitize.js';
 import type { ResolvedConfig, PaywallSlotItem, ReactDOMAdapter } from '../types/index.js';
@@ -41,7 +41,13 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
     if (!contentEl) return;
 
-    const { root: shadowRoot } = createInlineShadowHost(HOST_ID, contentEl);
+    // Overlay mode: fixed to the bottom of the viewport — attach to body so it
+    // is never constrained by the article's max-width container.
+    // Inline mode: inserted after the content element in document flow.
+    const { root: shadowRoot } = config.paywallMode === 'overlay'
+      ? createShadowHost(HOST_ID)
+      : createInlineShadowHost(HOST_ID, contentEl);
+
     root = shadowRoot;
     injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
 
@@ -62,16 +68,19 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     const panel = el('div');
     panel.className = 'cc-paywall-overlay';
 
-    // Gradient that visually fades the article into the white panel.
-    // We read the computed background of the content element's parent so the
-    // gradient blends correctly on sites with non-white backgrounds.
+    // Gradient that visually fades the article into the panel.
+    // Reads the page background so the gradient colour matches non-white sites.
     const gradient = el('div');
     gradient.className = 'cc-paywall-overlay-gradient';
-    const parentBg = getComputedStyle(contentEl.parentElement ?? contentEl).backgroundColor;
-    if (parentBg && parentBg !== 'rgba(0, 0, 0, 0)' && parentBg !== 'transparent') {
-      gradient.style.background = `linear-gradient(to bottom, transparent 0%, ${parentBg} 100%)`;
+    const pageBg = getComputedStyle(document.body).backgroundColor;
+    if (pageBg && pageBg !== 'rgba(0, 0, 0, 0)' && pageBg !== 'transparent') {
+      gradient.style.background = `linear-gradient(to bottom, transparent 0%, ${pageBg} 100%)`;
     }
     panel.appendChild(gradient);
+
+    // Add bottom padding to the content element so the fixed panel
+    // doesn't overlap the last readable line of the teaser.
+    contentEl.style.paddingBottom = '200px';
 
     // Top slot — client content
     const slot = el('div');
@@ -233,6 +242,11 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     reactRoot?.unmount();
     reactRoot = null;
     removeShadowHost(HOST_ID);
+    // Remove the padding we added to the content element
+    if (config.paywallMode === 'overlay') {
+      const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
+      if (contentEl) contentEl.style.paddingBottom = '';
+    }
     root = null;
     body = null;
   }

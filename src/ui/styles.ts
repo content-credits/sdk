@@ -31,36 +31,41 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* ── Overlay paywall panel — full-width white panel below gated content ── */
     .cc-paywall-overlay {
-      /* Break out of any max-width container to span the full viewport */
-      width: 100vw;
-      margin-left: calc(50% - 50vw);
+      /* Fixed to the bottom of the viewport — always visible, full width */
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
       background: #fff;
+      box-shadow: 0 -8px 40px rgba(0,0,0,0.10);
+      border-top: 1px solid #e5e7eb;
       font-family: ${fontFamily};
     }
 
-    /* Gradient that fades the article into the white panel */
+    /* Gradient that fades the article into the panel.
+       Sits above the panel via position:absolute + negative top. */
     .cc-paywall-overlay-gradient {
-      width: 100%;
+      position: absolute;
+      top: -120px;
+      left: 0;
+      right: 0;
       height: 120px;
       background: linear-gradient(to bottom, transparent 0%, #fff 100%);
-      margin-top: -120px;
       pointer-events: none;
-      position: relative;
-      z-index: 1;
     }
 
     /* Top slot — client-supplied content */
     .cc-paywall-overlay-slot {
-      padding: 32px 24px 0;
+      padding: 20px 24px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
 
     /* Our SDK's unlock section below the slot */
     .cc-paywall-overlay-body {
-      padding: 20px 24px 32px;
+      padding: 16px 24px 24px;
       display: flex;
       flex-direction: column;
       align-items: center;

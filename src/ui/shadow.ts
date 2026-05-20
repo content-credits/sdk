@@ -10,7 +10,7 @@ export function createShadowHost(id: string): { host: HTMLElement; root: ShadowR
     host = document.createElement('div');
     host.id = id;
     // The host element itself is invisible; only its shadow children show
-    host.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:2147483647;';
+    host.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;height:auto;z-index:2147483647;';
     document.body.appendChild(host);
   }
 
