@@ -1,27 +1,26 @@
 # Builds the Docusaurus docs site and deploys it to the production EC2 instance.
 #
+# Reuses the same secrets already set up for the backend deploy:
+#   EC2_HOST            — Elastic IP of the EC2 instance
+#   EC2_SSH_PRIVATE_KEY — Contents of contentcredits-key.pem
+#
 # The built static files are rsync'd to /home/ec2-user/docs on EC2.
-# Nginx serves them at https://docs.contentcredits.com via the mount:
-#   /home/ec2-user/docs → /var/www/docs (inside cc_nginx container)
+# Nginx serves them at https://docs.contentcredits.com via the volume mount
+# added in infra/docker-compose.yml:  /home/ec2-user/docs → /var/www/docs
 #
-# ── One-time EC2 setup (run once after first deploy) ────────────────────────
-#   1. SSH into EC2 and issue the SSL cert:
-#        sudo certbot certonly --webroot \
-#          -w /var/www/certbot \
-#          -d docs.contentcredits.com \
-#          --non-interactive --agree-tos -m your@email.com
-#   2. Reload nginx to pick up the new cert:
-#        docker exec cc_nginx nginx -s reload
-#
-# ── Required GitHub secrets (add to the SDK repo) ───────────────────────────
-#   EC2_HOST      — Elastic IP of the EC2 instance (e.g. 54.x.x.x)
-#   EC2_SSH_KEY   — Contents of contentcredits-key.pem (the private key)
+# ── One-time EC2 setup (only needed once after the nginx config is deployed) ──
+#   SSH into EC2 and run:
+#     sudo certbot certonly --webroot \
+#       -w /var/www/certbot \
+#       -d docs.contentcredits.com \
+#       --non-interactive --agree-tos -m your@email.com
+#     docker compose exec nginx nginx -s reload
 #
 # ── DNS record (add at your registrar) ──────────────────────────────────────
 #   Type  A
 #   Name  docs
-#   Value <EC2 Elastic IP>
-#   TTL   300 (or lowest available)
+#   Value <EC2 Elastic IP>   ← same IP already used for api.contentcredits.com
+#   TTL   300
 
 name: Deploy Docs
 
@@ -34,6 +33,10 @@ on:
       - 'docs-site/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
+
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -57,26 +60,31 @@ jobs:
         working-directory: docs-site
         run: npm run build
 
-      # ── SSH key setup ───────────────────────────────────────────────────────
-      - name: Set up SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+      - name: Copy docs to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: mkdir -p /home/ec2-user/docs
 
-      # ── Sync static files to EC2 ────────────────────────────────────────────
-      - name: Sync docs to EC2
-        run: |
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
-            docs-site/build/ \
-            ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/docs/
+      - name: Rsync build to EC2
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -az --delete
+          path: docs-site/build/
+          remote_path: /home/ec2-user/docs/
+          remote_host: ${{ secrets.EC2_HOST }}
+          remote_user: ec2-user
+          remote_key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
 
-      # ── Reload nginx to pick up any new files ───────────────────────────────
       - name: Reload nginx
-        run: |
-          ssh -i ~/.ssh/deploy_key \
-              -o StrictHostKeyChecking=no \
-              ec2-user@${{ secrets.EC2_HOST }} \
-              "docker exec cc_nginx nginx -s reload"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/ec2-user/app
+            docker compose exec -T nginx nginx -s reload
+            echo "Docs deployed successfully."
