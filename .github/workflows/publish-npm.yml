@@ -1,5 +1,9 @@
-# Publishes @contentcredits/sdk to npm on push to master/main using npm Trusted Publishing (OIDC).
+# Publishes @contentcredits/sdk to npm using npm Trusted Publishing (OIDC).
 # No long-lived NPM_TOKEN is required for the publish step.
+#
+# Triggered manually via GitHub Actions → "Run workflow" (workflow_dispatch).
+# CI (lint, typecheck, tests, build) runs automatically on every PR and push to main.
+# Publishing is intentionally decoupled — merge whenever you like, release when ready.
 #
 # Versioning (same idea as content-credits-wordpress-plugin):
 #   - Manual major: edit release-major.txt in this repo.
@@ -25,10 +29,7 @@
 name: Publish to npm
 
 on:
-  push:
-    branches:
-      - master
-      - main
+  workflow_dispatch:
 
 jobs:
   publish:
