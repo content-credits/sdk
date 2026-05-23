@@ -28,51 +28,36 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       margin-bottom: 20px;
     }
 
-    /* ─── Overlay paywall panel ─────────────────────────────────────────── */
+    /* ─── Modal paywall ─────────────────────────────────────────────────── */
     /*
-     * Fixed to the bottom of the viewport, full width.
-     * Elevation uses layered shadows — no harsh border-top line.
-     * Thin hairline at the top (1px shadow) + ambient shadow for depth.
+     * Full-viewport backdrop + centered card (desktop) / bottom-sheet (mobile).
+     * The backdrop sits inside the shadow root with position:fixed so it covers
+     * the entire viewport regardless of article height or scroll position.
      */
-    .cc-paywall-overlay {
+    .cc-paywall-modal-backdrop {
       position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100%;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .cc-paywall-modal-card {
       background: #fff;
-      box-shadow:
-        0 -1px 0 rgba(15, 23, 42, 0.07),
-        0 -4px 12px rgba(15, 23, 42, 0.04),
-        0 -24px 64px rgba(15, 23, 42, 0.07);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28), 0 4px 16px rgba(0, 0, 0, 0.12);
       font-family: ${fontFamily};
     }
 
-    /*
-     * Gradient that fades the article content into the panel.
-     * Multi-stop with a cubic-ease-ish curve so it reads as depth,
-     * not as an obvious white overlay.
-     * initOverlay() overrides this via inline style with the real page bg colour.
-     */
-    .cc-paywall-overlay-gradient {
-      position: absolute;
-      top: -180px;
-      left: 0;
-      right: 0;
-      height: 180px;
-      pointer-events: none;
-      background: linear-gradient(
-        to bottom,
-        transparent        0%,
-        rgba(255,255,255,0.08)  30%,
-        rgba(255,255,255,0.55)  60%,
-        rgba(255,255,255,0.90)  82%,
-        #ffffff            100%
-      );
-    }
-
     /* Top slot — publisher-supplied content */
-    .cc-paywall-overlay-slot {
-      padding: 28px 32px 4px;
+    .cc-paywall-modal-slot {
+      padding: 32px 32px 8px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -80,13 +65,28 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
     }
 
     /* SDK's own action section below the slot */
-    .cc-paywall-overlay-body {
-      padding: 20px 32px 36px;
+    .cc-paywall-modal-body {
+      padding: 24px 32px 32px;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 14px;
       text-align: center;
+    }
+
+    /* Mobile: bottom-sheet layout */
+    @media (max-width: 600px) {
+      .cc-paywall-modal-backdrop {
+        align-items: flex-end;
+        padding: 0;
+      }
+      .cc-paywall-modal-card {
+        border-radius: 20px 20px 0 0;
+        max-width: 100%;
+        max-height: 85vh;
+      }
+      .cc-paywall-modal-slot { padding: 24px 24px 6px; }
+      .cc-paywall-modal-body { padding: 16px 24px 32px; }
     }
 
     /* ─── Slot typography ───────────────────────────────────────────────── */
@@ -233,10 +233,8 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
     }
     .cc-powered-by a:hover { text-decoration: underline; }
 
-    /* ─── Mobile: tighter vertical padding ──────────────────────────────── */
+    /* ─── Mobile: slot typography ────────────────────────────────────────── */
     @media (max-width: 480px) {
-      .cc-paywall-overlay-slot { padding: 22px 20px 2px; gap: 6px; }
-      .cc-paywall-overlay-body { padding: 16px 20px 28px; gap: 12px; }
       .cc-slot-heading { font-size: 17px; }
     }
   `;

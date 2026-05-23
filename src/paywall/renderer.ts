@@ -38,22 +38,19 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   let reactRoot: { unmount(): void } | null = null;
 
   function init(): void {
-    const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
-    if (!contentEl) return;
-
-    // Overlay mode: fixed to the bottom of the viewport — attach to body so it
-    // is never constrained by the article's max-width container.
-    // Inline mode: inserted after the content element in document flow.
-    const { root: shadowRoot } = config.paywallMode === 'overlay'
-      ? createShadowHost(HOST_ID)
-      : createInlineShadowHost(HOST_ID, contentEl);
-
-    root = shadowRoot;
-    injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
-
     if (config.paywallMode === 'overlay') {
-      initOverlay(root, contentEl);
+      // Modal mode: full-viewport takeover, no content element needed for positioning.
+      const { root: shadowRoot } = createShadowHost(HOST_ID);
+      root = shadowRoot;
+      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
+      initModal(root);
     } else {
+      // Inline mode: inserted after the content element in document flow.
+      const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
+      if (!contentEl) return;
+      const { root: shadowRoot } = createInlineShadowHost(HOST_ID, contentEl);
+      root = shadowRoot;
+      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
       initInline(root);
     }
   }
@@ -64,53 +61,33 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     shadowRoot.appendChild(body);
   }
 
-  function initOverlay(shadowRoot: ShadowRoot, contentEl: HTMLElement): void {
-    const panel = el('div');
-    panel.className = 'cc-paywall-overlay';
+  function initModal(shadowRoot: ShadowRoot): void {
+    // Lock page scroll while the modal is visible.
+    document.body.style.overflow = 'hidden';
 
-    // Gradient that visually fades the article into the panel.
-    // Reads the page background so the gradient colour matches non-white sites.
-    const gradient = el('div');
-    gradient.className = 'cc-paywall-overlay-gradient';
-    const pageBg = getComputedStyle(document.body).backgroundColor;
-    if (pageBg && pageBg !== 'rgba(0, 0, 0, 0)' && pageBg !== 'transparent') {
-      // Multi-stop gradient so the fade reads as natural depth rather than a
-      // sharp white overlay — same curve as the CSS default, but using the
-      // actual page background colour.
-      gradient.style.background = [
-        'linear-gradient(to bottom,',
-        `transparent 0%,`,
-        `transparent 18%,`,
-        // Mid-stops approximate a cubic ease-in curve
-        `color-mix(in srgb, ${pageBg} 30%, transparent) 45%,`,
-        `color-mix(in srgb, ${pageBg} 75%, transparent) 68%,`,
-        `${pageBg} 100%`,
-        ')',
-      ].join(' ');
+    // Full-viewport backdrop/scrim.
+    const backdrop = el('div');
+    backdrop.className = 'cc-paywall-modal-backdrop';
 
-      // Fallback for browsers without color-mix (pre-2023) — simple 2-stop
-      if (!CSS.supports('color', 'color-mix(in srgb, red 50%, blue)')) {
-        gradient.style.background = `linear-gradient(to bottom, transparent 0%, ${pageBg} 100%)`;
-      }
+    // Centered card (desktop) / bottom-sheet (mobile — handled in CSS).
+    const card = el('div');
+    card.className = 'cc-paywall-modal-card';
+
+    // Top slot — publisher-supplied content rendered above SDK controls.
+    if (config.paywallTopSlot) {
+      const slot = el('div');
+      slot.className = 'cc-paywall-modal-slot';
+      reactRoot = mountTopSlot(slot, config.paywallTopSlot, config.reactDOM) ?? null;
+      card.appendChild(slot);
     }
-    panel.appendChild(gradient);
 
-    // Add bottom padding to the content element so the fixed panel
-    // doesn't overlap the last readable line of the teaser.
-    contentEl.style.paddingBottom = '240px';
-
-    // Top slot — client content
-    const slot = el('div');
-    slot.className = 'cc-paywall-overlay-slot';
-    reactRoot = mountTopSlot(slot, config.paywallTopSlot, config.reactDOM) ?? null;
-    panel.appendChild(slot);
-
-    // Our SDK's unlock body
+    // SDK's unlock/login controls.
     body = el('div');
-    body.className = 'cc-paywall-overlay-body';
-    panel.appendChild(body);
+    body.className = 'cc-paywall-modal-body';
+    card.appendChild(body);
 
-    shadowRoot.appendChild(panel);
+    backdrop.appendChild(card);
+    shadowRoot.appendChild(backdrop);
   }
 
   function render(
@@ -153,10 +130,14 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
   // ── State renderers ────────────────────────────────────────────────────────
 
+  // Show headings when: inline mode (always), or overlay/modal mode without a
+  // top slot (nothing else providing article context to the reader).
+  function shouldShowHeadings(): boolean {
+    return config.paywallMode === 'inline' || !config.paywallTopSlot;
+  }
+
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
-    // In overlay mode the slot already provides article context, so the body
-    // just needs the CTA. In inline mode we add heading + description.
-    if (config.paywallMode === 'inline') {
+    if (shouldShowHeadings()) {
       parent.appendChild(el('h2', 'This article requires a subscription'));
       const detail = el('p', 'Sign in to your Content Credits account to unlock this article.');
       detail.className = 'cc-state-detail';
@@ -172,7 +153,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   }
 
   function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null): void {
-    if (config.paywallMode === 'inline') {
+    if (shouldShowHeadings()) {
       parent.appendChild(el('h2', 'Unlock this article'));
       const detail = el('p', 'Use your Content Credits balance to instantly access this article.');
       detail.className = 'cc-state-detail';
@@ -197,7 +178,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     required: number | null,
     available: number | null
   ): void {
-    if (config.paywallMode === 'inline') {
+    if (shouldShowHeadings()) {
       parent.appendChild(el('h2', 'Not enough credits'));
     }
 
@@ -256,10 +237,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     reactRoot?.unmount();
     reactRoot = null;
     removeShadowHost(HOST_ID);
-    // Remove the padding we added to the content element
+    // Restore scroll lock applied in initModal.
     if (config.paywallMode === 'overlay') {
-      const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
-      if (contentEl) contentEl.style.paddingBottom = '';
+      document.body.style.overflow = '';
     }
     root = null;
     body = null;
