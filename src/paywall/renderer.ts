@@ -136,15 +136,6 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     return config.paywallMode === 'inline' || !config.paywallTopSlot;
   }
 
-  // In overlay mode the slot's button is the primary CTA — use outline for
-  // the SDK's own unlock button so there's clear visual hierarchy.
-  // In inline mode (or no slot) keep the filled primary style.
-  function unlockBtnClass(): string {
-    return config.paywallMode === 'overlay' && !!config.paywallTopSlot
-      ? 'cc-btn cc-btn-outline'
-      : 'cc-btn cc-btn-primary';
-  }
-
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
     if (shouldShowHeadings()) {
       parent.appendChild(el('h2', 'This article requires a subscription'));
@@ -154,7 +145,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     }
 
     const btn = el('button', 'Sign in to read');
-    btn.className = unlockBtnClass();
+    btn.className = 'cc-btn cc-btn-primary';
     btn.addEventListener('click', () => { void cb.onLogin(); });
     parent.appendChild(btn);
 
@@ -176,7 +167,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       : 'Unlock article';
     const label = config.unlockButtonLabel ?? defaultLabel;
     const btn = el('button', label);
-    btn.className = unlockBtnClass();
+    btn.className = 'cc-btn cc-btn-primary';
     btn.addEventListener('click', () => { void cb.onPurchase(); });
     parent.appendChild(btn);
 
