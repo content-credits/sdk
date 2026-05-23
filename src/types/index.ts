@@ -290,6 +290,13 @@ export interface SDKTheme {
    * Default: 'rgba(0, 0, 0, 0.45)'
    */
   backdropColor?: string;
+  /**
+   * Fill colour for the SDK's own action buttons (Sign in, Unlock, Top up).
+   * Intentionally separate from `primaryColor` so publishers can brand their
+   * own slot buttons differently from the Content Credits controls.
+   * Default: '#44C678' (Content Credits green)
+   */
+  sdkButtonColor?: string;
 }
 
 export interface ResolvedConfig extends Required<Omit<SDKConfig,

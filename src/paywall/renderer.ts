@@ -42,7 +42,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       // Modal mode: full-viewport takeover, no content element needed for positioning.
       const { root: shadowRoot } = createShadowHost(HOST_ID);
       root = shadowRoot;
-      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily, config.theme.backdropColor));
+      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily, config.theme.backdropColor, config.theme.sdkButtonColor));
       initModal(root);
     } else {
       // Inline mode: inserted after the content element in document flow.
@@ -50,7 +50,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       if (!contentEl) return;
       const { root: shadowRoot } = createInlineShadowHost(HOST_ID, contentEl);
       root = shadowRoot;
-      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily, config.theme.backdropColor));
+      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily, config.theme.backdropColor, config.theme.sdkButtonColor));
       initInline(root);
     }
   }
@@ -145,7 +145,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     }
 
     const btn = el('button', 'Sign in to read');
-    btn.className = 'cc-btn cc-btn-primary';
+    btn.className = 'cc-btn cc-btn-sdk';
     btn.addEventListener('click', () => { void cb.onLogin(); });
     parent.appendChild(btn);
 
@@ -167,7 +167,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       : 'Unlock article';
     const label = config.unlockButtonLabel ?? defaultLabel;
     const btn = el('button', label);
-    btn.className = 'cc-btn cc-btn-primary';
+    btn.className = 'cc-btn cc-btn-sdk';
     btn.addEventListener('click', () => { void cb.onPurchase(); });
     parent.appendChild(btn);
 
@@ -194,7 +194,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     parent.appendChild(detail);
 
     const btn = el('button', 'Top up credits');
-    btn.className = 'cc-btn cc-btn-primary';
+    btn.className = 'cc-btn cc-btn-sdk';
     btn.addEventListener('click', () => cb.onBuyMoreCredits());
     parent.appendChild(btn);
 

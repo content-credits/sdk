@@ -61,6 +61,7 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
       primaryColor: raw.theme?.primaryColor ?? '#44C678',
       fontFamily: raw.theme?.fontFamily ?? "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       backdropColor: raw.theme?.backdropColor ?? 'rgba(0, 0, 0, 0.45)',
+      sdkButtonColor: raw.theme?.sdkButtonColor ?? '#44C678',
     },
   };
 }

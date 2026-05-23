@@ -1,4 +1,4 @@
-export function getPaywallStyles(primaryColor: string, fontFamily: string, backdropColor: string): string {
+export function getPaywallStyles(primaryColor: string, fontFamily: string, backdropColor: string, sdkButtonColor: string): string {
   return `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -154,6 +154,8 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
 
     .cc-btn-primary  { background: ${primaryColor}; color: #fff; }
     .cc-btn-secondary { background: #0f172a; color: #fff; }
+    /* SDK's own action buttons — always CC green unless sdkButtonColor is overridden */
+    .cc-btn-sdk { background: ${sdkButtonColor}; color: #fff; }
 
     /* Ghost: text-link-style secondary action */
     .cc-btn-ghost {
@@ -222,7 +224,7 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
       letter-spacing: 0.01em;
     }
     .cc-powered-by a {
-      color: ${primaryColor};
+      color: ${sdkButtonColor};
       text-decoration: none;
       font-weight: 600;
     }
