@@ -58,16 +58,18 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
 
     /* Top slot — publisher-supplied content */
     .cc-paywall-modal-slot {
-      padding: 36px 40px 8px;
+      padding: 44px 52px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 16px;
     }
 
-    /* SDK's own action section below the slot */
+    /* SDK's own action section below the slot.
+     * top padding matches the slot gap so the space above and below the
+     * "or" divider is perfectly even. */
     .cc-paywall-modal-body {
-      padding: 16px 40px 40px;
+      padding: 16px 52px 48px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -77,30 +79,31 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
 
     /* Mobile: tighter padding */
     @media (max-width: 480px) {
-      .cc-paywall-modal-slot { padding: 28px 24px 6px; gap: 10px; }
-      .cc-paywall-modal-body { padding: 14px 24px 32px; gap: 12px; }
+      .cc-paywall-modal-slot { padding: 32px 28px 0; gap: 14px; }
+      .cc-paywall-modal-body { padding: 14px 28px 36px; gap: 12px; }
     }
 
     /* ─── Slot typography ───────────────────────────────────────────────── */
     .cc-slot-heading {
-      font-size: 24px;
+      font-size: 40px;
       font-weight: 700;
       color: #0f172a;
       text-align: center;
-      line-height: 1.25;
-      letter-spacing: -0.02em;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
     }
     .cc-slot-subheading {
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 600;
       color: #1e293b;
       text-align: center;
+      line-height: 1.4;
     }
     .cc-slot-text {
-      font-size: 15px;
+      font-size: 18px;
       color: #64748b;
       text-align: center;
-      line-height: 1.6;
+      line-height: 1.55;
     }
 
     /* Visual separator between slot and body */
@@ -227,8 +230,8 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
 
     /* ─── Mobile: slot typography ────────────────────────────────────────── */
     @media (max-width: 480px) {
-      .cc-slot-heading { font-size: 20px; }
-      .cc-slot-text { font-size: 14px; }
+      .cc-slot-heading { font-size: 28px; letter-spacing: -0.02em; }
+      .cc-slot-text { font-size: 16px; }
     }
   `;
 }
