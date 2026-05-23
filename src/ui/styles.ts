@@ -30,34 +30,35 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* ─── Modal paywall ─────────────────────────────────────────────────── */
     /*
-     * Full-viewport backdrop + centered card (desktop) / bottom-sheet (mobile).
-     * The backdrop sits inside the shadow root with position:fixed so it covers
-     * the entire viewport regardless of article height or scroll position.
+     * Full-viewport backdrop with a full-width bottom-sheet panel.
+     * The scrim covers the article above; the panel anchors to the bottom edge.
+     * Scroll is locked on the host page while this is visible.
      */
     .cc-paywall-modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.55);
+      background: rgba(0, 0, 0, 0.45);
       display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
+      align-items: flex-end;
     }
 
+    /*
+     * Full-width panel — no max-width, no border-radius.
+     * A primary-colour hairline at the top acts as the visual anchor/separator.
+     */
     .cc-paywall-modal-card {
-      background: #fff;
-      border-radius: 16px;
       width: 100%;
-      max-width: 480px;
-      max-height: 90vh;
+      background: #fff;
+      border-top: 3px solid ${primaryColor};
+      box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.14);
+      max-height: 70vh;
       overflow-y: auto;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28), 0 4px 16px rgba(0, 0, 0, 0.12);
       font-family: ${fontFamily};
     }
 
     /* Top slot — publisher-supplied content */
     .cc-paywall-modal-slot {
-      padding: 32px 32px 8px;
+      padding: 28px 32px 4px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -66,7 +67,7 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* SDK's own action section below the slot */
     .cc-paywall-modal-body {
-      padding: 24px 32px 32px;
+      padding: 20px 32px 36px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -74,19 +75,10 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       text-align: center;
     }
 
-    /* Mobile: bottom-sheet layout */
-    @media (max-width: 600px) {
-      .cc-paywall-modal-backdrop {
-        align-items: flex-end;
-        padding: 0;
-      }
-      .cc-paywall-modal-card {
-        border-radius: 20px 20px 0 0;
-        max-width: 100%;
-        max-height: 85vh;
-      }
-      .cc-paywall-modal-slot { padding: 24px 24px 6px; }
-      .cc-paywall-modal-body { padding: 16px 24px 32px; }
+    /* Mobile: tighter padding */
+    @media (max-width: 480px) {
+      .cc-paywall-modal-slot { padding: 22px 20px 2px; gap: 6px; }
+      .cc-paywall-modal-body { padding: 16px 20px 28px; gap: 12px; }
     }
 
     /* ─── Slot typography ───────────────────────────────────────────────── */
