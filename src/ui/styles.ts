@@ -1,4 +1,4 @@
-export function getPaywallStyles(primaryColor: string, fontFamily: string): string {
+export function getPaywallStyles(primaryColor: string, fontFamily: string, backdropColor: string, sdkButtonColor: string): string {
   return `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -28,60 +28,48 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       margin-bottom: 20px;
     }
 
-    /* ─── Overlay paywall panel ─────────────────────────────────────────── */
+    /* ─── Modal paywall ─────────────────────────────────────────────────── */
     /*
-     * Fixed to the bottom of the viewport, full width.
-     * Elevation uses layered shadows — no harsh border-top line.
-     * Thin hairline at the top (1px shadow) + ambient shadow for depth.
+     * Full-viewport backdrop with a full-width bottom-sheet panel.
+     * The scrim covers the article above; the panel anchors to the bottom edge.
+     * Scroll is locked on the host page while this is visible.
      */
-    .cc-paywall-overlay {
+    .cc-paywall-modal-backdrop {
       position: fixed;
-      bottom: 0;
-      left: 0;
+      inset: 0;
+      background: ${backdropColor};
+      display: flex;
+      align-items: flex-end;
+    }
+
+    /*
+     * Full-width panel — no max-width, no border-radius.
+     * A primary-colour hairline at the top acts as the visual anchor/separator.
+     */
+    .cc-paywall-modal-card {
       width: 100%;
       background: #fff;
-      box-shadow:
-        0 -1px 0 rgba(15, 23, 42, 0.07),
-        0 -4px 12px rgba(15, 23, 42, 0.04),
-        0 -24px 64px rgba(15, 23, 42, 0.07);
+      border-top: 3px solid ${primaryColor};
+      box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.14);
+      max-height: 80vh;
+      overflow-y: auto;
       font-family: ${fontFamily};
     }
 
-    /*
-     * Gradient that fades the article content into the panel.
-     * Multi-stop with a cubic-ease-ish curve so it reads as depth,
-     * not as an obvious white overlay.
-     * initOverlay() overrides this via inline style with the real page bg colour.
-     */
-    .cc-paywall-overlay-gradient {
-      position: absolute;
-      top: -180px;
-      left: 0;
-      right: 0;
-      height: 180px;
-      pointer-events: none;
-      background: linear-gradient(
-        to bottom,
-        transparent        0%,
-        rgba(255,255,255,0.08)  30%,
-        rgba(255,255,255,0.55)  60%,
-        rgba(255,255,255,0.90)  82%,
-        #ffffff            100%
-      );
-    }
-
     /* Top slot — publisher-supplied content */
-    .cc-paywall-overlay-slot {
-      padding: 28px 32px 4px;
+    .cc-paywall-modal-slot {
+      padding: 44px 52px 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 16px;
     }
 
-    /* SDK's own action section below the slot */
-    .cc-paywall-overlay-body {
-      padding: 20px 32px 36px;
+    /* SDK's own action section below the slot.
+     * top padding matches the slot gap so the space above and below the
+     * "or" divider is perfectly even. */
+    .cc-paywall-modal-body {
+      padding: 16px 52px 48px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -89,23 +77,30 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       text-align: center;
     }
 
+    /* Mobile: tighter padding */
+    @media (max-width: 480px) {
+      .cc-paywall-modal-slot { padding: 32px 28px 0; gap: 14px; }
+      .cc-paywall-modal-body { padding: 14px 28px 36px; gap: 12px; }
+    }
+
     /* ─── Slot typography ───────────────────────────────────────────────── */
     .cc-slot-heading {
-      font-size: 19px;
+      font-size: 40px;
       font-weight: 700;
       color: #0f172a;
       text-align: center;
-      line-height: 1.3;
-      letter-spacing: -0.015em;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
     }
     .cc-slot-subheading {
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 600;
       color: #1e293b;
       text-align: center;
+      line-height: 1.4;
     }
     .cc-slot-text {
-      font-size: 13px;
+      font-size: 18px;
       color: #64748b;
       text-align: center;
       line-height: 1.55;
@@ -159,6 +154,8 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     .cc-btn-primary  { background: ${primaryColor}; color: #fff; }
     .cc-btn-secondary { background: #0f172a; color: #fff; }
+    /* SDK's own action buttons — always CC green unless sdkButtonColor is overridden */
+    .cc-btn-sdk { background: ${sdkButtonColor}; color: #fff; }
 
     /* Ghost: text-link-style secondary action */
     .cc-btn-ghost {
@@ -227,17 +224,16 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       letter-spacing: 0.01em;
     }
     .cc-powered-by a {
-      color: ${primaryColor};
+      color: ${sdkButtonColor};
       text-decoration: none;
       font-weight: 600;
     }
     .cc-powered-by a:hover { text-decoration: underline; }
 
-    /* ─── Mobile: tighter vertical padding ──────────────────────────────── */
+    /* ─── Mobile: slot typography ────────────────────────────────────────── */
     @media (max-width: 480px) {
-      .cc-paywall-overlay-slot { padding: 22px 20px 2px; gap: 6px; }
-      .cc-paywall-overlay-body { padding: 16px 20px 28px; gap: 12px; }
-      .cc-slot-heading { font-size: 17px; }
+      .cc-slot-heading { font-size: 28px; letter-spacing: -0.02em; }
+      .cc-slot-text { font-size: 16px; }
     }
   `;
 }

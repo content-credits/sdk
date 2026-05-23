@@ -188,6 +188,15 @@ export interface SDKConfig {
     | ((container: HTMLElement) => void)
     | Record<string, unknown>;  // React element (has $$typeof) — detected at runtime
 
+  /**
+   * Custom label for the SDK's unlock/purchase button.
+   * Defaults to `'Unlock · N credits'` (when price is known) or `'Unlock article'`.
+   *
+   * @example
+   * unlockButtonLabel: 'Unlock Just This Story'
+   */
+  unlockButtonLabel?: string;
+
   /** Called when the user is granted access to the article */
   onAccessGranted?: () => void;
 
@@ -275,10 +284,24 @@ export interface SDKTheme {
   primaryColor?: string;
   /** Font family for all SDK UI elements */
   fontFamily?: string;
+  /**
+   * Background colour of the modal backdrop/scrim.
+   * Accepts any valid CSS colour value.
+   * Default: 'rgba(0, 0, 0, 0.45)'
+   */
+  backdropColor?: string;
+  /**
+   * Fill colour for the SDK's own action buttons (Sign in, Unlock, Top up).
+   * Intentionally separate from `primaryColor` so publishers can brand their
+   * own slot buttons differently from the Content Credits controls.
+   * Default: '#44C678' (Content Credits green)
+   */
+  sdkButtonColor?: string;
 }
 
 export interface ResolvedConfig extends Required<Omit<SDKConfig,
   | 'paywallTopSlot'
+  | 'unlockButtonLabel'
   | 'reactDOM'
   | 'onAccessGranted'
   | 'onStateChange'
@@ -298,6 +321,7 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   apiBaseUrl: string;
   accountsUrl: string;
   paywallMode: 'inline' | 'overlay';
+  unlockButtonLabel?: string;
   paywallTopSlot?: SDKConfig['paywallTopSlot'];
   reactDOM?: ReactDOMAdapter;
   onAccessGranted?: () => void;
