@@ -1,4 +1,4 @@
-export function getPaywallStyles(primaryColor: string, fontFamily: string): string {
+export function getPaywallStyles(primaryColor: string, fontFamily: string, backdropColor: string): string {
   return `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -37,7 +37,7 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
     .cc-paywall-modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.45);
+      background: ${backdropColor};
       display: flex;
       align-items: flex-end;
     }
@@ -51,23 +51,23 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
       background: #fff;
       border-top: 3px solid ${primaryColor};
       box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.14);
-      max-height: 70vh;
+      max-height: 80vh;
       overflow-y: auto;
       font-family: ${fontFamily};
     }
 
     /* Top slot — publisher-supplied content */
     .cc-paywall-modal-slot {
-      padding: 28px 32px 4px;
+      padding: 36px 40px 8px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 12px;
     }
 
     /* SDK's own action section below the slot */
     .cc-paywall-modal-body {
-      padding: 20px 32px 36px;
+      padding: 16px 40px 40px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -77,30 +77,30 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* Mobile: tighter padding */
     @media (max-width: 480px) {
-      .cc-paywall-modal-slot { padding: 22px 20px 2px; gap: 6px; }
-      .cc-paywall-modal-body { padding: 16px 20px 28px; gap: 12px; }
+      .cc-paywall-modal-slot { padding: 28px 24px 6px; gap: 10px; }
+      .cc-paywall-modal-body { padding: 14px 24px 32px; gap: 12px; }
     }
 
     /* ─── Slot typography ───────────────────────────────────────────────── */
     .cc-slot-heading {
-      font-size: 19px;
+      font-size: 24px;
       font-weight: 700;
       color: #0f172a;
       text-align: center;
-      line-height: 1.3;
-      letter-spacing: -0.015em;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
     }
     .cc-slot-subheading {
-      font-size: 15px;
+      font-size: 17px;
       font-weight: 600;
       color: #1e293b;
       text-align: center;
     }
     .cc-slot-text {
-      font-size: 13px;
+      font-size: 15px;
       color: #64748b;
       text-align: center;
-      line-height: 1.55;
+      line-height: 1.6;
     }
 
     /* Visual separator between slot and body */
@@ -227,7 +227,8 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string): stri
 
     /* ─── Mobile: slot typography ────────────────────────────────────────── */
     @media (max-width: 480px) {
-      .cc-slot-heading { font-size: 17px; }
+      .cc-slot-heading { font-size: 20px; }
+      .cc-slot-text { font-size: 14px; }
     }
   `;
 }

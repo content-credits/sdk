@@ -42,6 +42,7 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     debug: raw.debug ?? false,
     headless: raw.headless ?? false,
     paywallMode: raw.paywallMode ?? 'overlay',
+    unlockButtonLabel: raw.unlockButtonLabel,
     paywallTopSlot: raw.paywallTopSlot,
     reactDOM: raw.reactDOM,
     apiBaseUrl: __API_BASE_URL__,
@@ -59,6 +60,7 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     theme: {
       primaryColor: raw.theme?.primaryColor ?? '#44C678',
       fontFamily: raw.theme?.fontFamily ?? "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      backdropColor: raw.theme?.backdropColor ?? 'rgba(0, 0, 0, 0.45)',
     },
   };
 }

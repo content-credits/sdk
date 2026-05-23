@@ -42,7 +42,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       // Modal mode: full-viewport takeover, no content element needed for positioning.
       const { root: shadowRoot } = createShadowHost(HOST_ID);
       root = shadowRoot;
-      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
+      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily, config.theme.backdropColor));
       initModal(root);
     } else {
       // Inline mode: inserted after the content element in document flow.
@@ -50,7 +50,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       if (!contentEl) return;
       const { root: shadowRoot } = createInlineShadowHost(HOST_ID, contentEl);
       root = shadowRoot;
-      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily));
+      injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily, config.theme.backdropColor));
       initInline(root);
     }
   }
@@ -136,6 +136,15 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     return config.paywallMode === 'inline' || !config.paywallTopSlot;
   }
 
+  // In overlay mode the slot's button is the primary CTA — use outline for
+  // the SDK's own unlock button so there's clear visual hierarchy.
+  // In inline mode (or no slot) keep the filled primary style.
+  function unlockBtnClass(): string {
+    return config.paywallMode === 'overlay' && !!config.paywallTopSlot
+      ? 'cc-btn cc-btn-outline'
+      : 'cc-btn cc-btn-primary';
+  }
+
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
     if (shouldShowHeadings()) {
       parent.appendChild(el('h2', 'This article requires a subscription'));
@@ -145,7 +154,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     }
 
     const btn = el('button', 'Sign in to read');
-    btn.className = 'cc-btn cc-btn-primary';
+    btn.className = unlockBtnClass();
     btn.addEventListener('click', () => { void cb.onLogin(); });
     parent.appendChild(btn);
 
@@ -161,11 +170,13 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     }
 
     // Credits shown inline in the button label — clear and scannable.
-    const label = credits !== null
+    // Publishers can override via `unlockButtonLabel`.
+    const defaultLabel = credits !== null
       ? `Unlock · ${credits} credit${credits !== 1 ? 's' : ''}`
       : 'Unlock article';
+    const label = config.unlockButtonLabel ?? defaultLabel;
     const btn = el('button', label);
-    btn.className = 'cc-btn cc-btn-primary';
+    btn.className = unlockBtnClass();
     btn.addEventListener('click', () => { void cb.onPurchase(); });
     parent.appendChild(btn);
 
