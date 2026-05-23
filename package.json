@@ -23,6 +23,7 @@
     }
   },
   "scripts": {
+    "prepare": "npm run build",
     "build": "rollup -c rollup.config.mjs",
     "build:watch": "rollup -c rollup.config.mjs --watch",
     "build:dev": "USE_LOCALHOST=true rollup -c rollup.config.mjs",
