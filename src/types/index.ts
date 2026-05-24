@@ -186,7 +186,7 @@ export interface SDKConfig {
     | PaywallSlotItem[]
     | HTMLElement
     | ((container: HTMLElement) => void)
-    | Record<string, unknown>;  // React element (has $$typeof) — detected at runtime
+    | { type: unknown; props: unknown; key?: unknown };  // React/JSX element — detected at runtime via $$typeof
 
   /**
    * Custom label for the SDK's unlock/purchase button.
