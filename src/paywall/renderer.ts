@@ -119,13 +119,15 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   ): void {
     if (state === 'checking') return;
     if (!body) init();
-    if (!body) return;
 
-    // renderPaywall: body is set asynchronously via ref. Buffer until ready.
+    // renderPaywall: body is set asynchronously via the mountSdkButton ref
+    // callback. Buffer this call and flush it once the ref fires.
     if (!body && config.renderPaywall) {
       pendingRender = () => render(state, callbacks, meta);
       return;
     }
+
+    if (!body) return;
 
     // Loading: don't rebuild the DOM — freeze the active button in place.
     // This prevents the panel from shrinking/shifting when a purchase or
