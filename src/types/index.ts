@@ -198,6 +198,29 @@ export interface SDKConfig {
   unlockButtonLabel?: string;
 
   /**
+   * Override the default copy shown in the SDK's built-in paywall states.
+   * All fields are optional — only supply the strings you want to change.
+   *
+   * @example
+   * paywallCopy: {
+   *   loginHeading: 'Read the full story',
+   *   loginDetail: 'Sign in to access this article with your credits.',
+   * }
+   */
+  paywallCopy?: {
+    /** Heading shown in the login state. Default: 'This article requires a subscription' */
+    loginHeading?: string;
+    /** Detail shown in the login state. Default: 'Sign in to your Content Credits account to unlock this article.' */
+    loginDetail?: string;
+    /** Heading shown in the purchase state. Default: 'Unlock this article' */
+    purchaseHeading?: string;
+    /** Detail shown in the purchase state. Default: 'Use your Content Credits balance to instantly access this article.' */
+    purchaseDetail?: string;
+    /** Heading shown when credits are insufficient. Default: 'Not enough credits' */
+    insufficientHeading?: string;
+  };
+
+  /**
    * Full-control paywall render function. The publisher renders the entire
    * modal content and decides where the SDK's action button appears by passing
    * `mountSdkButton` as a React ref callback to any container element.
@@ -327,6 +350,7 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   | 'paywallTopSlot'
   | 'renderPaywall'
   | 'unlockButtonLabel'
+  | 'paywallCopy'
   | 'reactDOM'
   | 'onAccessGranted'
   | 'onStateChange'
@@ -347,6 +371,7 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   accountsUrl: string;
   paywallMode: 'inline' | 'overlay';
   unlockButtonLabel?: string;
+  paywallCopy?: SDKConfig['paywallCopy'];
   renderPaywall?: SDKConfig['renderPaywall'];
   paywallTopSlot?: SDKConfig['paywallTopSlot'];
   reactDOM?: ReactDOMAdapter;

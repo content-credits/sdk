@@ -227,6 +227,7 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
       font-size: 11px;
       color: #94a3b8;
       letter-spacing: 0.01em;
+      margin-top: 6px;
     }
     .cc-powered-by a {
       color: ${sdkButtonColor};

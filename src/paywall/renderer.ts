@@ -168,8 +168,8 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
     if (shouldShowHeadings()) {
-      parent.appendChild(el('h2', 'This article requires a subscription'));
-      const detail = el('p', 'Sign in to your Content Credits account to unlock this article.');
+      parent.appendChild(el('h2', config.paywallCopy?.loginHeading ?? 'This article requires a subscription'));
+      const detail = el('p', config.paywallCopy?.loginDetail ?? 'Sign in to your Content Credits account to unlock this article.');
       detail.className = 'cc-state-detail';
       parent.appendChild(detail);
     }
@@ -184,8 +184,8 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
   function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null): void {
     if (shouldShowHeadings()) {
-      parent.appendChild(el('h2', 'Unlock this article'));
-      const detail = el('p', 'Use your Content Credits balance to instantly access this article.');
+      parent.appendChild(el('h2', config.paywallCopy?.purchaseHeading ?? 'Unlock this article'));
+      const detail = el('p', config.paywallCopy?.purchaseDetail ?? 'Use your Content Credits balance to instantly access this article.');
       detail.className = 'cc-state-detail';
       parent.appendChild(detail);
     }
@@ -211,7 +211,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     available: number | null
   ): void {
     if (shouldShowHeadings()) {
-      parent.appendChild(el('h2', 'Not enough credits'));
+      parent.appendChild(el('h2', config.paywallCopy?.insufficientHeading ?? 'Not enough credits'));
     }
 
     const detail = el('p');
