@@ -197,6 +197,30 @@ export interface SDKConfig {
    */
   unlockButtonLabel?: string;
 
+  /**
+   * Full-control paywall render function. The publisher renders the entire
+   * modal content and decides where the SDK's action button appears by passing
+   * `mountSdkButton` as a React ref callback to any container element.
+   *
+   * The SDK only controls the button (state-aware: sign in / unlock / top up)
+   * and the "Powered by Content Credits" line, which are mounted inside
+   * whichever element `mountSdkButton` is attached to.
+   *
+   * Requires `reactDOM` to also be set. Takes precedence over `paywallTopSlot`.
+   *
+   * @example
+   * renderPaywall: ({ mountSdkButton }) => (
+   *   <div>
+   *     <h2>Donate to access this story.</h2>
+   *     <button onClick={openDonation}>See Donation Options</button>
+   *     <div ref={mountSdkButton} />
+   *   </div>
+   * )
+   */
+  renderPaywall?: (props: {
+    mountSdkButton: (el: HTMLElement | null) => void;
+  }) => { type: unknown; props: unknown; key?: unknown };
+
   /** Called when the user is granted access to the article */
   onAccessGranted?: () => void;
 
@@ -301,6 +325,7 @@ export interface SDKTheme {
 
 export interface ResolvedConfig extends Required<Omit<SDKConfig,
   | 'paywallTopSlot'
+  | 'renderPaywall'
   | 'unlockButtonLabel'
   | 'reactDOM'
   | 'onAccessGranted'
@@ -322,6 +347,7 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   accountsUrl: string;
   paywallMode: 'inline' | 'overlay';
   unlockButtonLabel?: string;
+  renderPaywall?: SDKConfig['renderPaywall'];
   paywallTopSlot?: SDKConfig['paywallTopSlot'];
   reactDOM?: ReactDOMAdapter;
   onAccessGranted?: () => void;

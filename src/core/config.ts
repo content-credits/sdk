@@ -43,6 +43,7 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     headless: raw.headless ?? false,
     paywallMode: raw.paywallMode ?? 'overlay',
     unlockButtonLabel: raw.unlockButtonLabel,
+    renderPaywall: raw.renderPaywall,
     paywallTopSlot: raw.paywallTopSlot,
     reactDOM: raw.reactDOM,
     apiBaseUrl: __API_BASE_URL__,

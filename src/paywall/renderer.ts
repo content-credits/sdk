@@ -36,6 +36,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   let body: HTMLElement | null = null;
   // Tracks a mounted React 18 root so we can unmount it on destroy.
   let reactRoot: { unmount(): void } | null = null;
+  // renderPaywall: body is set asynchronously via ref callback. Buffer any
+  // render() call that arrives before the ref fires.
+  let pendingRender: (() => void) | null = null;
 
   function init(): void {
     if (config.paywallMode === 'overlay') {
@@ -65,26 +68,45 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     // Lock page scroll while the modal is visible.
     document.body.style.overflow = 'hidden';
 
-    // Full-viewport backdrop/scrim.
     const backdrop = el('div');
     backdrop.className = 'cc-paywall-modal-backdrop';
 
-    // Centered card (desktop) / bottom-sheet (mobile — handled in CSS).
     const card = el('div');
     card.className = 'cc-paywall-modal-card';
 
-    // Top slot — publisher-supplied content rendered above SDK controls.
-    if (config.paywallTopSlot) {
+    if (config.renderPaywall && config.reactDOM) {
+      // Publisher owns the full card layout. They receive mountSdkButton as a
+      // ref callback and place it wherever they want in their JSX. The SDK
+      // mounts its state-aware button + powered-by into that element.
       const slot = el('div');
-      slot.className = 'cc-paywall-modal-slot';
-      reactRoot = mountTopSlot(slot, config.paywallTopSlot, config.reactDOM) ?? null;
-      card.appendChild(slot);
-    }
+      slot.className = 'cc-paywall-render-slot';
 
-    // SDK's unlock/login controls.
-    body = el('div');
-    body.className = 'cc-paywall-modal-body';
-    card.appendChild(body);
+      const mountSdkButton = (container: HTMLElement | null): void => {
+        if (!container) return;
+        body = container;
+        // Flush any render() call that arrived before the ref fired.
+        if (pendingRender) {
+          pendingRender();
+          pendingRender = null;
+        }
+      };
+
+      const jsxElement = config.renderPaywall({ mountSdkButton });
+      reactRoot = mountReactElement(slot, jsxElement, config.reactDOM) ?? null;
+      card.appendChild(slot);
+    } else {
+      // Default: SDK-controlled slot above + SDK body below.
+      if (config.paywallTopSlot) {
+        const slot = el('div');
+        slot.className = 'cc-paywall-modal-slot';
+        reactRoot = mountTopSlot(slot, config.paywallTopSlot, config.reactDOM) ?? null;
+        card.appendChild(slot);
+      }
+
+      body = el('div');
+      body.className = 'cc-paywall-modal-body';
+      card.appendChild(body);
+    }
 
     backdrop.appendChild(card);
     shadowRoot.appendChild(backdrop);
@@ -98,6 +120,12 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     if (state === 'checking') return;
     if (!body) init();
     if (!body) return;
+
+    // renderPaywall: body is set asynchronously via ref. Buffer until ready.
+    if (!body && config.renderPaywall) {
+      pendingRender = () => render(state, callbacks, meta);
+      return;
+    }
 
     // Loading: don't rebuild the DOM — freeze the active button in place.
     // This prevents the panel from shrinking/shifting when a purchase or
@@ -236,6 +264,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   function destroy(): void {
+    pendingRender = null;
     reactRoot?.unmount();
     reactRoot = null;
     removeShadowHost(HOST_ID);

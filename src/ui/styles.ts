@@ -56,6 +56,11 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
       font-family: ${fontFamily};
     }
 
+    /* renderPaywall mode — publisher owns all layout, no SDK padding */
+    .cc-paywall-render-slot {
+      width: 100%;
+    }
+
     /* Top slot — publisher-supplied content */
     .cc-paywall-modal-slot {
       padding: 44px 52px 0;
