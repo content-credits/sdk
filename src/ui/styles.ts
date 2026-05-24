@@ -61,18 +61,7 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
       width: 100%;
     }
 
-    /* Top slot — publisher-supplied content */
-    .cc-paywall-modal-slot {
-      padding: 44px 52px 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-    }
-
-    /* SDK's own action section below the slot.
-     * top padding matches the slot gap so the space above and below the
-     * "or" divider is perfectly even. */
+    /* SDK's own action section (button + powered-by) */
     .cc-paywall-modal-body {
       padding: 16px 52px 48px;
       display: flex;
@@ -84,55 +73,10 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
 
     /* Mobile: tighter padding */
     @media (max-width: 480px) {
-      .cc-paywall-modal-slot { padding: 32px 28px 0; gap: 14px; }
       .cc-paywall-modal-body { padding: 14px 28px 36px; gap: 12px; }
     }
 
-    /* ─── Slot typography ───────────────────────────────────────────────── */
-    .cc-slot-heading {
-      font-size: 40px;
-      font-weight: 700;
-      color: #0f172a;
-      text-align: center;
-      line-height: 1.1;
-      letter-spacing: -0.03em;
-    }
-    .cc-slot-subheading {
-      font-size: 18px;
-      font-weight: 600;
-      color: #1e293b;
-      text-align: center;
-      line-height: 1.4;
-    }
-    .cc-slot-text {
-      font-size: 18px;
-      color: #64748b;
-      text-align: center;
-      line-height: 1.55;
-    }
-
-    /* Visual separator between slot and body */
-    .cc-slot-divider {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 12px;
-      color: #94a3b8;
-    }
-    .cc-slot-divider::before,
-    .cc-slot-divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: #e2e8f0;
-    }
-
     /* ─── Buttons ───────────────────────────────────────────────────────── */
-    /*
-     * All primary paywall CTAs use .cc-btn-primary (filled, brand colour).
-     * .cc-btn-ghost is for low-emphasis secondary links.
-     * No outline variant in paywall states — one clear hierarchy.
-     */
     .cc-btn {
       display: inline-flex;
       align-items: center;
@@ -157,50 +101,9 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
     .cc-btn:active:not(:disabled) { transform: scale(0.975); }
     .cc-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-    .cc-btn-primary  { background: ${primaryColor}; color: #fff; }
-    .cc-btn-secondary { background: #0f172a; color: #fff; }
-    /* SDK's own action buttons — always CC green unless sdkButtonColor is overridden */
+    .cc-btn-primary { background: ${primaryColor}; color: #fff; }
+    /* SDK's own action buttons (sign in / unlock / top up) — CC green unless sdkButtonColor overrides */
     .cc-btn-sdk { background: ${sdkButtonColor}; color: #fff; }
-
-    /* Ghost: text-link-style secondary action */
-    .cc-btn-ghost {
-      background: transparent;
-      color: #64748b;
-      height: 36px;
-      font-size: 13px;
-      font-weight: 500;
-      letter-spacing: 0;
-    }
-    .cc-btn-ghost:hover:not(:disabled) {
-      color: #0f172a;
-      background: #f1f5f9;
-      filter: none;
-    }
-
-    /* Kept for backwards-compat with paywallTopSlot button items */
-    .cc-btn-outline {
-      background: transparent;
-      color: #0f172a;
-      border: 1.5px solid #cbd5e1;
-    }
-    .cc-btn-outline:hover:not(:disabled) {
-      border-color: #94a3b8;
-      filter: none;
-      background: #f8fafc;
-    }
-
-    /* ─── Credit badge ───────────────────────────────────────────────────── */
-    .cc-credit-badge {
-      display: inline-flex;
-      align-items: center;
-      background: #f1f5f9;
-      color: #475569;
-      border-radius: 20px;
-      padding: 3px 10px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-    }
 
     /* ─── Inline state description text ─────────────────────────────────── */
     .cc-state-detail {
@@ -236,11 +139,6 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
     }
     .cc-powered-by a:hover { text-decoration: underline; }
 
-    /* ─── Mobile: slot typography ────────────────────────────────────────── */
-    @media (max-width: 480px) {
-      .cc-slot-heading { font-size: 28px; letter-spacing: -0.02em; }
-      .cc-slot-text { font-size: 16px; }
-    }
   `;
 }
 

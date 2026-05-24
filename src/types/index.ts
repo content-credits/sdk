@@ -95,20 +95,6 @@ export interface CommentsResponse {
 // Backend returns the thread object directly (no success wrapper)
 export type EnsureThreadResponse = CommentThread;
 
-// ─── Paywall slot types ──────────────────────────────────────────────────────
-
-export type PaywallSlotItemVariant = 'primary' | 'secondary' | 'outline';
-
-export interface PaywallSlotItem {
-  type: 'heading' | 'subheading' | 'text' | 'button' | 'divider';
-  /** Text content — used by heading, subheading, text, button, and divider (for the label) */
-  content?: string;
-  /** Button style variant. Default: 'primary' */
-  variant?: PaywallSlotItemVariant;
-  /** Click handler for button items */
-  onClick?: () => void;
-}
-
 /**
  * Loosely-typed ReactDOM adapter — matches both React 18 (`createRoot`) and
  * React 16/17 (`render`) without pulling React into the SDK's own bundle.
@@ -154,39 +140,14 @@ export interface SDKConfig {
   paywallMode?: 'inline' | 'overlay';
 
   /**
-   * Your ReactDOM instance. Required when `paywallTopSlot` is a React element.
+   * Your ReactDOM instance. Required when using `renderPaywall`.
    * Supports React 18 (`createRoot`) and React 16/17 (`render`).
    *
    * @example
    * import ReactDOM from 'react-dom/client'; // React 18
-   * ContentCredits.init({ reactDOM, paywallTopSlot: <DonationWidget /> });
+   * ContentCredits.init({ reactDOM, renderPaywall: ({ mountSdkButton }) => <MyPaywall ref={mountSdkButton} /> });
    */
   reactDOM?: ReactDOMAdapter;
-
-  /**
-   * Content to render in the top section of the paywall panel, above the SDK's
-   * own unlock UI.
-   *
-   * Accepts:
-   * - A React element (JSX) — requires `reactDOM` to also be set
-   * - A structured `PaywallSlotItem[]` array — SDK renders & styles the items
-   * - A plain `HTMLElement` — appended directly into the slot container
-   * - A factory `(container: HTMLElement) => void` — called with the slot DOM node
-   *
-   * @example React widget
-   * paywallTopSlot: <DonationWidget />   // also set reactDOM
-   *
-   * @example Structured items
-   * paywallTopSlot: [
-   *   { type: 'heading', content: 'Donate to access this story.' },
-   *   { type: 'button',  content: 'See Donation Options', variant: 'primary', onClick: openDonate },
-   * ]
-   */
-  paywallTopSlot?:
-    | PaywallSlotItem[]
-    | HTMLElement
-    | ((container: HTMLElement) => void)
-    | { type: unknown; props: unknown; key?: unknown };  // React/JSX element — detected at runtime via $$typeof
 
   /**
    * Custom label for the SDK's unlock/purchase button.
@@ -225,11 +186,9 @@ export interface SDKConfig {
    * modal content and decides where the SDK's action button appears by passing
    * `mountSdkButton` as a React ref callback to any container element.
    *
-   * The SDK only controls the button (state-aware: sign in / unlock / top up)
-   * and the "Powered by Content Credits" line, which are mounted inside
-   * whichever element `mountSdkButton` is attached to.
-   *
-   * Requires `reactDOM` to also be set. Takes precedence over `paywallTopSlot`.
+   * The SDK mounts its state-aware button (sign in / unlock / top up) and the
+   * "Powered by Content Credits" line inside whichever element receives the ref.
+   * Requires `reactDOM` to also be set.
    *
    * @example
    * renderPaywall: ({ mountSdkButton }) => (
@@ -243,6 +202,15 @@ export interface SDKConfig {
   renderPaywall?: (props: {
     mountSdkButton: (el: HTMLElement | null) => void;
   }) => { type: unknown; props: unknown; key?: unknown };
+
+  /**
+   * Whether to show the heading and detail text in the SDK's built-in paywall
+   * states (login, purchase, insufficient). Set to `false` when your layout
+   * already provides article context (e.g. via `renderPaywall`).
+   *
+   * Default: `true`
+   */
+  showHeadings?: boolean;
 
   /** Called when the user is granted access to the article */
   onAccessGranted?: () => void;
@@ -347,7 +315,6 @@ export interface SDKTheme {
 }
 
 export interface ResolvedConfig extends Required<Omit<SDKConfig,
-  | 'paywallTopSlot'
   | 'renderPaywall'
   | 'unlockButtonLabel'
   | 'paywallCopy'
@@ -370,10 +337,10 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   apiBaseUrl: string;
   accountsUrl: string;
   paywallMode: 'inline' | 'overlay';
+  showHeadings: boolean;
   unlockButtonLabel?: string;
   paywallCopy?: SDKConfig['paywallCopy'];
   renderPaywall?: SDKConfig['renderPaywall'];
-  paywallTopSlot?: SDKConfig['paywallTopSlot'];
   reactDOM?: ReactDOMAdapter;
   onAccessGranted?: () => void;
   onStateChange?: (state: SDKState) => void;
