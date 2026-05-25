@@ -142,6 +142,83 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
   `;
 }
 
+/**
+ * Minimal styles for the nested shadow root that wraps the SDK button inside
+ * a publisher-controlled renderPaywall layout. Only includes button, spinner,
+ * and powered-by rules — no backdrop/card/modal rules needed here.
+ */
+export function getSdkButtonStyles(sdkButtonColor: string, fontFamily: string): string {
+  return `
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    .cc-paywall-modal-body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      text-align: center;
+      font-family: ${fontFamily};
+    }
+
+    .cc-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      height: 46px;
+      padding: 0 22px;
+      border: none;
+      border-radius: 10px;
+      font-family: ${fontFamily};
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s ease, transform 0.1s ease;
+      width: 100%;
+      max-width: 380px;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .cc-btn:hover:not(:disabled) { filter: brightness(1.07); }
+    .cc-btn:active:not(:disabled) { transform: scale(0.975); }
+    .cc-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .cc-btn-sdk { background: ${sdkButtonColor}; color: #fff; }
+
+    .cc-state-detail {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.6;
+    }
+
+    .cc-spinner {
+      display: inline-block;
+      width: 17px;
+      height: 17px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: rgba(255, 255, 255, 0.95);
+      border-radius: 50%;
+      animation: cc-spin 0.6s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes cc-spin { to { transform: rotate(360deg); } }
+
+    .cc-powered-by {
+      font-size: 11px;
+      color: #94a3b8;
+      letter-spacing: 0.01em;
+      margin-top: 6px;
+    }
+    .cc-powered-by a {
+      color: ${sdkButtonColor};
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .cc-powered-by a:hover { text-decoration: underline; }
+  `;
+}
+
 export function getCommentStyles(primaryColor: string, fontFamily: string): string {
   return `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
