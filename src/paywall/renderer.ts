@@ -141,7 +141,12 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     meta?: { requiredCredits?: number | null; creditBalance?: number | null }
   ): void {
     if (state === 'checking') return;
-    if (!body) init();
+    // Guard: only call init() if neither root nor body is set. In the
+    // renderPaywall case, root is set synchronously but body stays null until
+    // the mountSdkButton ref fires asynchronously. Without this guard a second
+    // render() call before the ref fires would call init() again and create a
+    // duplicate shadow host + light DOM container.
+    if (!root && !body) init();
 
     // renderPaywall: body is set asynchronously via the mountSdkButton ref
     // callback. Buffer this call and flush it once the ref fires.
