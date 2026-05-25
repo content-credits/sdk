@@ -1,5 +1,5 @@
 import { createShadowHost, createInlineShadowHost, injectStyles, removeShadowHost } from '../ui/shadow.js';
-import { getPaywallStyles } from '../ui/styles.js';
+import { getPaywallStyles, getSdkButtonStyles } from '../ui/styles.js';
 import { el, setTextContent } from '../ui/sanitize.js';
 import type { ResolvedConfig, ReactDOMAdapter } from '../types/index.js';
 
@@ -32,21 +32,25 @@ export interface PaywallRenderer {
 
 export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   let root: ShadowRoot | null = null;
-  // In inline mode: the single panel div. In overlay mode: the body section only.
+  // In inline mode: the single panel div. In overlay/renderPaywall mode: wrapper
+  // inside the nested shadow root where the SDK button is mounted.
   let body: HTMLElement | null = null;
   // Tracks a mounted React 18 root so we can unmount it on destroy.
   let reactRoot: { unmount(): void } | null = null;
   // renderPaywall: body is set asynchronously via ref callback. Buffer any
   // render() call that arrives before the ref fires.
   let pendingRender: (() => void) | null = null;
+  // Guards against in-flight async callbacks (e.g. mountSdkButton ref) firing
+  // after destroy() — e.g. React StrictMode double-invoke in development.
+  let isDestroyed = false;
 
   function init(): void {
     if (config.paywallMode === 'overlay') {
       // Modal mode: full-viewport takeover, no content element needed for positioning.
-      const { root: shadowRoot } = createShadowHost(HOST_ID);
+      const { root: shadowRoot, host: shadowHost } = createShadowHost(HOST_ID);
       root = shadowRoot;
       injectStyles(root, getPaywallStyles(config.theme.primaryColor, config.theme.fontFamily, config.theme.backdropColor, config.theme.sdkButtonColor));
-      initModal(root);
+      initModal(root, shadowHost);
     } else {
       // Inline mode: inserted after the content element in document flow.
       const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
@@ -64,7 +68,17 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     shadowRoot.appendChild(body);
   }
 
-  function initModal(shadowRoot: ShadowRoot): void {
+  function initModal(shadowRoot: ShadowRoot, shadowHost: HTMLElement): void {
+    // Defensive cleanup: if a previous renderer instance already appended a
+    // backdrop to this shadow root (React StrictMode double-invoke), remove it
+    // so we don't end up with two backdrops inside the same shadow root.
+    const existingBackdrop = shadowRoot.querySelector('.cc-paywall-modal-backdrop');
+    if (existingBackdrop) existingBackdrop.remove();
+    // Also remove any stale slotted light DOM containers from a prior instance.
+    for (const child of Array.from(shadowHost.children)) {
+      if (child.getAttribute('slot') === 'paywall-content') child.remove();
+    }
+
     // Lock page scroll while the modal is visible.
     document.body.style.overflow = 'hidden';
 
@@ -75,15 +89,49 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     card.className = 'cc-paywall-modal-card';
 
     if (config.renderPaywall && config.reactDOM) {
-      // Publisher owns the full card layout. They receive mountSdkButton as a
-      // ref callback and place it wherever they want in their JSX. The SDK
-      // mounts its state-aware button + powered-by into that element.
-      const slot = el('div');
-      slot.className = 'cc-paywall-render-slot';
+      // Publisher controls the full card layout via renderPaywall JSX.
+      //
+      // CSS isolation problem: content mounted inside a shadow root loses access
+      // to the host page's stylesheets. To solve this, we render the publisher's
+      // JSX into the light DOM (as a slotted child of the shadow host) so their
+      // CSS applies normally. The SDK's own button gets its own nested shadow root
+      // for style isolation, but the publisher can still position it anywhere in
+      // their layout via the mountSdkButton ref callback.
+      //
+      // DOM structure:
+      //   cc-paywall-host (shadow host)
+      //   ├── [outer shadow root] — backdrop, card, named slot
+      //   └── <div slot="paywall-content"> (light DOM) — publisher's React tree
+      //           └── <div ref={mountSdkButton}>
+      //                   └── [nested shadow root] — SDK button, isolated styles
+
+      // Named slot in the card — projects the light DOM container visually.
+      const slotEl = document.createElement('slot');
+      slotEl.name = 'paywall-content';
+      card.appendChild(slotEl);
+
+      // Light DOM container — publisher's React mounts here, host CSS applies.
+      const lightContainer = el('div');
+      lightContainer.setAttribute('slot', 'paywall-content');
+      shadowHost.appendChild(lightContainer);
 
       const mountSdkButton = (container: HTMLElement | null): void => {
         if (!container) return;
-        body = container;
+        // If destroy() was called before this ref fired (React StrictMode
+        // cleanup racing the async import), bail out immediately.
+        if (isDestroyed) return;
+
+        // Attach a nested shadow root to isolate SDK button styles from the
+        // publisher's stylesheet while keeping publisher content in light DOM.
+        const nestedRoot = container.attachShadow({ mode: 'open' });
+        injectStyles(nestedRoot, getSdkButtonStyles(config.theme.sdkButtonColor, config.theme.fontFamily));
+
+        // body is the wrapper inside the nested shadow root.
+        const wrapper = el('div');
+        wrapper.className = 'cc-paywall-modal-body';
+        nestedRoot.appendChild(wrapper);
+        body = wrapper;
+
         // Flush any render() call that arrived before the ref fired.
         if (pendingRender) {
           pendingRender();
@@ -92,8 +140,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       };
 
       const jsxElement = config.renderPaywall({ mountSdkButton });
-      reactRoot = mountReactElement(slot, jsxElement, config.reactDOM) ?? null;
-      card.appendChild(slot);
+      reactRoot = mountReactElement(lightContainer, jsxElement, config.reactDOM) ?? null;
     } else {
       body = el('div');
       body.className = 'cc-paywall-modal-body';
@@ -109,8 +156,14 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     callbacks: PaywallRendererCallbacks,
     meta?: { requiredCredits?: number | null; creditBalance?: number | null }
   ): void {
+    if (isDestroyed) return;
     if (state === 'checking') return;
-    if (!body) init();
+    // Guard: only call init() if neither root nor body is set. In the
+    // renderPaywall case, root is set synchronously but body stays null until
+    // the mountSdkButton ref fires asynchronously. Without this guard a second
+    // render() call before the ref fires would call init() again and create a
+    // duplicate shadow host + light DOM container.
+    if (!root && !body) init();
 
     // renderPaywall: body is set asynchronously via the mountSdkButton ref
     // callback. Buffer this call and flush it once the ref fires.
@@ -252,9 +305,12 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   function destroy(): void {
+    isDestroyed = true;
     pendingRender = null;
     reactRoot?.unmount();
     reactRoot = null;
+    // removeShadowHost removes the entire host element, which also removes any
+    // light DOM children (the slotted container for renderPaywall).
     removeShadowHost(HOST_ID);
     // Restore scroll lock applied in initModal.
     if (config.paywallMode === 'overlay') {
