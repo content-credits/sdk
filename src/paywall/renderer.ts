@@ -40,6 +40,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   // renderPaywall: body is set asynchronously via ref callback. Buffer any
   // render() call that arrives before the ref fires.
   let pendingRender: (() => void) | null = null;
+  // Guards against in-flight async callbacks (e.g. mountSdkButton ref) firing
+  // after destroy() — e.g. React StrictMode double-invoke in development.
+  let isDestroyed = false;
 
   function init(): void {
     if (config.paywallMode === 'overlay') {
@@ -66,6 +69,16 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   }
 
   function initModal(shadowRoot: ShadowRoot, shadowHost: HTMLElement): void {
+    // Defensive cleanup: if a previous renderer instance already appended a
+    // backdrop to this shadow root (React StrictMode double-invoke), remove it
+    // so we don't end up with two backdrops inside the same shadow root.
+    const existingBackdrop = shadowRoot.querySelector('.cc-paywall-modal-backdrop');
+    if (existingBackdrop) existingBackdrop.remove();
+    // Also remove any stale slotted light DOM containers from a prior instance.
+    for (const child of Array.from(shadowHost.children)) {
+      if (child.getAttribute('slot') === 'paywall-content') child.remove();
+    }
+
     // Lock page scroll while the modal is visible.
     document.body.style.overflow = 'hidden';
 
@@ -104,6 +117,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
       const mountSdkButton = (container: HTMLElement | null): void => {
         if (!container) return;
+        // If destroy() was called before this ref fired (React StrictMode
+        // cleanup racing the async import), bail out immediately.
+        if (isDestroyed) return;
 
         // Attach a nested shadow root to isolate SDK button styles from the
         // publisher's stylesheet while keeping publisher content in light DOM.
@@ -140,6 +156,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     callbacks: PaywallRendererCallbacks,
     meta?: { requiredCredits?: number | null; creditBalance?: number | null }
   ): void {
+    if (isDestroyed) return;
     if (state === 'checking') return;
     // Guard: only call init() if neither root nor body is set. In the
     // renderPaywall case, root is set synchronously but body stays null until
@@ -288,6 +305,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   function destroy(): void {
+    isDestroyed = true;
     pendingRender = null;
     reactRoot?.unmount();
     reactRoot = null;
