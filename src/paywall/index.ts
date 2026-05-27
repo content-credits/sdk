@@ -210,6 +210,7 @@ export function createPaywall(
         const timer = setTimeout(() => {
           extensionAvailable = false;
           state.set({ isExtensionAvailable: false });
+          bridge.clearAuthorizationResponse(); // discard any late response after fallback
           resolve(false);
         }, EXTENSION_RESPONSE_TIMEOUT_MS);
 

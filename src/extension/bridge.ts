@@ -31,6 +31,7 @@ export interface ExtensionBridge {
   requestPurchase(params: { articleId: string; hostName: string; location: string; title: string }): void;
   requestLogin(hostName: string): void;
   onAuthorizationResponse(handler: AuthResponseHandler): void;
+  clearAuthorizationResponse(): void;
   onPurchaseResponse(handler: PurchaseResponseHandler): void;
 }
 
@@ -109,6 +110,10 @@ export function createExtensionBridge(): ExtensionBridge {
     authHandler = handler;
   }
 
+  function clearAuthorizationResponse(): void {
+    authHandler = null;
+  }
+
   function onPurchaseResponse(handler: PurchaseResponseHandler): void {
     purchaseHandler = handler;
   }
@@ -120,6 +125,7 @@ export function createExtensionBridge(): ExtensionBridge {
     requestPurchase,
     requestLogin,
     onAuthorizationResponse,
+    clearAuthorizationResponse,
     onPurchaseResponse,
   };
 }
