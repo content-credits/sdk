@@ -2,7 +2,6 @@ import type { SDKConfig, ResolvedConfig } from '../types/index.js';
 
 declare const __API_BASE_URL__: string;
 declare const __ACCOUNTS_URL__: string;
-declare const __EXTENSION_ID__: string;
 
 function normalizeArticleUrl(articleUrl: string): string {
   try {
@@ -38,7 +37,7 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     contentSelector: raw.contentSelector ?? '.cc-premium-content',
     teaserParagraphs: raw.teaserParagraphs ?? 2,
     enableComments: raw.enableComments ?? true,
-    extensionId: raw.extensionId ?? __EXTENSION_ID__,
+    extensionId: 'ljehdpabbhgccmanhjdfacjnaigpgcml',
     debug: raw.debug ?? false,
     headless: raw.headless ?? false,
     paywallMode: raw.paywallMode ?? 'overlay',

@@ -308,7 +308,6 @@ function autoInit(): void {
     contentSelector: ds.ccContentSelector ?? ds.contentSelector,
     teaserParagraphs: ds.ccTeaserParagraphs ? parseInt(ds.ccTeaserParagraphs, 10) : undefined,
     enableComments: ds.ccEnableComments !== 'false',
-    extensionId: ds.ccExtensionId,
     debug: ds.ccDebug === 'true',
   };
 
