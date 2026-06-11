@@ -3,7 +3,8 @@ import type { Gate } from './gate.js';
 import { createPaywallRenderer, type PaywallRenderer } from './renderer.js';
 import { detectExtension } from '../extension/detector.js';
 import { createExtensionBridge } from '../extension/bridge.js';
-import { openAuthPopup, isMobileDevice, consumeTokenFromUrl } from '../auth/popup.js';
+import { isMobileDevice } from '../auth/popup.js';
+import { login as oauthLogin } from '../auth/oauth.js';
 import { tokenStorage } from '../auth/storage.js';
 import { ApiError } from '../api/client.js';
 import type { createCreditsApi } from '../api/credits.js';
@@ -49,11 +50,6 @@ export function createPaywall(
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  function buildAuthUrl(): string {
-    const redirect = encodeURIComponent(config.articleUrl);
-    return `${__ACCOUNTS_URL__}/authenticate/extension?redirect=${redirect}`;
-  }
-
   function handleAccessGranted(creditsSpent = 0, balance = 0): void {
     state.set({ hasAccess: true, isLoaded: true, isLoading: false });
     if (!config.headless) {
@@ -68,23 +64,22 @@ export function createPaywall(
   // ── Login ─────────────────────────────────────────────────────────────────
 
   async function doLogin(): Promise<void> {
-    const authUrl = buildAuthUrl();
-
     if (extensionAvailable) {
       bridge.requestLogin(config.hostName);
       return;
     }
 
     if (isMobileDevice()) {
-      // Full-page redirect — popup is blocked on mobile
-      window.location.href = authUrl;
+      // Full-page redirect — popup is unusable on mobile. The result is
+      // picked up by consumeAuthCodeFromUrl on the next page load.
+      void oauthLogin(config);
       return;
     }
 
     if (!config.headless) renderer.render('loading', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
-    const token = await openAuthPopup(authUrl);
+    const ok = await oauthLogin(config);
 
-    if (token) {
+    if (ok) {
       state.set({ isLoggedIn: true });
       await checkAccess();
     } else {
@@ -284,12 +279,6 @@ export function createPaywall(
   // ── Init ──────────────────────────────────────────────────────────────────
 
   async function init(): Promise<void> {
-    // Check if user just returned from a mobile login redirect
-    const redirectToken = consumeTokenFromUrl();
-    if (redirectToken) {
-      state.set({ isLoggedIn: true });
-    }
-
     // Detect extension
     extensionAvailable = await detectExtension(config.extensionId);
     state.set({ isExtensionAvailable: extensionAvailable });

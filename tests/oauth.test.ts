@@ -1,0 +1,222 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { tokenStorage, refreshTokenStorage } from '../src/auth/storage';
+import { login, consumeAuthCodeFromUrl } from '../src/auth/oauth';
+import type { ResolvedConfig } from '../src/types/index';
+
+let mobile = false;
+let popup: { closed: boolean; close: ReturnType<typeof vi.fn> } | null = null;
+
+vi.mock('../src/auth/popup.js', () => ({
+  isMobileDevice: vi.fn(() => mobile),
+  openCenteredPopup: vi.fn(() => popup),
+}));
+
+const config = {
+  apiKey: 'pub_123',
+  articleUrl: 'https://example.com/post',
+  apiBaseUrl: 'https://api.contentcredits.com',
+  accountsUrl: 'https://accounts.contentcredits.com',
+} as unknown as ResolvedConfig;
+
+function base64urlOf(bytes: Uint8Array): string {
+  let str = '';
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+const STATE = base64urlOf(new Uint8Array(16));
+const VERIFIER = base64urlOf(new Uint8Array(32));
+
+const VALID_JWT =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' +
+  btoa(JSON.stringify({ id: 'user123', email: 'test@example.com', exp: 9999999999, iat: 1000000000 }))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '') +
+  '.fake-signature';
+
+function setLocation(href: string): void {
+  Object.defineProperty(window, 'location', {
+    value: new URL(href),
+    writable: true,
+    configurable: true,
+  });
+}
+
+describe('oauth', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+
+    // localStorage isn't available in this test environment — provide a
+    // simple in-memory shim so refreshTokenStorage works as expected.
+    const localStore = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => (localStore.has(k) ? localStore.get(k)! : null),
+      setItem: (k: string, v: string) => { localStore.set(k, v); },
+      removeItem: (k: string) => { localStore.delete(k); },
+      clear: () => localStore.clear(),
+    });
+
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(arr: T): T => {
+      if (arr instanceof Uint8Array) arr.fill(0);
+      return arr;
+    });
+    // The real SHA-256 digest is CPU-heavy under coverage instrumentation —
+    // stub it so PKCE setup resolves quickly. Its output value is irrelevant
+    // to these tests (only the resulting code/state exchange is checked).
+    vi.spyOn(crypto.subtle, 'digest').mockResolvedValue(new Uint8Array(32).buffer);
+    mobile = false;
+    popup = null;
+    tokenStorage.clear();
+    refreshTokenStorage.clear();
+    sessionStorage.clear();
+    setLocation('http://localhost:3000/post');
+    Object.defineProperty(window, 'opener', { value: null, writable: true, configurable: true });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  describe('login', () => {
+    it('redirects to /authorize on mobile devices and returns false', async () => {
+      mobile = true;
+
+      const result = await login(config);
+
+      expect(result).toBe(false);
+      expect(window.location.href).toContain(`${config.accountsUrl}/authorize?`);
+      expect(window.location.href).toContain(`client_id=${config.apiKey}`);
+    });
+
+    it('falls back to a full-page redirect when the popup is blocked', async () => {
+      popup = null;
+
+      const result = await login(config);
+
+      expect(result).toBe(false);
+      expect(window.location.href).toContain(`${config.accountsUrl}/authorize?`);
+    });
+
+    it('shares a single in-flight attempt across concurrent calls', () => {
+      mobile = true;
+
+      const first = login(config);
+      const second = login(config);
+
+      expect(first).toBe(second);
+    });
+
+    it('exchanges the code for tokens after receiving it via postMessage', async () => {
+      popup = { closed: false, close: vi.fn() };
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+        accessToken: VALID_JWT,
+        refreshToken: 'refresh_123',
+      }), { status: 200 }));
+
+      const loginPromise = login(config);
+
+      // Let the async PKCE setup (crypto.subtle.digest) settle so the
+      // message listener is registered before we dispatch the event.
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: new URL(config.accountsUrl).origin,
+        data: { type: 'cc_auth_code', code: 'auth_code_123', state: STATE },
+      }));
+
+      const result = await loginPromise;
+
+      expect(result).toBe(true);
+      expect(tokenStorage.get()).toBe(VALID_JWT);
+      expect(refreshTokenStorage.get()).toBe('refresh_123');
+      expect(popup.close).toHaveBeenCalled();
+
+      const [, requestInit] = vi.mocked(fetch).mock.calls[0];
+      expect(JSON.parse(requestInit!.body as string)).toEqual({
+        code: 'auth_code_123',
+        code_verifier: VERIFIER,
+      });
+    });
+
+    it('resolves false if the popup is closed without delivering a code', async () => {
+      vi.useFakeTimers();
+      popup = { closed: false, close: vi.fn() };
+
+      const loginPromise = login(config);
+
+      // Simulate the user closing the popup before logging in.
+      await vi.advanceTimersByTimeAsync(0);
+      popup.closed = true;
+      await vi.advanceTimersByTimeAsync(1500);
+
+      const result = await loginPromise;
+      expect(result).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('consumeAuthCodeFromUrl', () => {
+    it('returns false when the URL has no auth code params', async () => {
+      setLocation('http://localhost:3000/post');
+
+      const result = await consumeAuthCodeFromUrl(config);
+
+      expect(result).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('returns false when the state does not match the pending PKCE attempt', async () => {
+      setLocation('http://localhost:3000/post?cc_auth_code=code123&cc_state=other_state');
+      sessionStorage.setItem('cc_pkce_pending', JSON.stringify({ state: STATE, verifier: VERIFIER }));
+
+      const result = await consumeAuthCodeFromUrl(config);
+
+      expect(result).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('exchanges the code and stores tokens when the state matches', async () => {
+      setLocation(`http://localhost:3000/post?cc_auth_code=code123&cc_state=${STATE}`);
+      sessionStorage.setItem('cc_pkce_pending', JSON.stringify({ state: STATE, verifier: VERIFIER }));
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+        accessToken: VALID_JWT,
+        refreshToken: 'refresh_456',
+      }), { status: 200 }));
+
+      const result = await consumeAuthCodeFromUrl(config);
+
+      expect(result).toBe(true);
+      expect(tokenStorage.get()).toBe(VALID_JWT);
+      expect(refreshTokenStorage.get()).toBe('refresh_456');
+      expect(sessionStorage.getItem('cc_pkce_pending')).toBeNull();
+
+      const [, requestInit] = vi.mocked(fetch).mock.calls[0];
+      expect(JSON.parse(requestInit!.body as string)).toEqual({
+        code: 'code123',
+        code_verifier: VERIFIER,
+      });
+    });
+
+    it('notifies a reachable opener on success', async () => {
+      setLocation(`http://localhost:3000/post?cc_auth_code=code123&cc_state=${STATE}`);
+      sessionStorage.setItem('cc_pkce_pending', JSON.stringify({ state: STATE, verifier: VERIFIER }));
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+        accessToken: 'access_789',
+        refreshToken: 'refresh_789',
+      }), { status: 200 }));
+
+      const opener = { closed: false, postMessage: vi.fn() };
+      Object.defineProperty(window, 'opener', { value: opener, writable: true, configurable: true });
+
+      const result = await consumeAuthCodeFromUrl(config);
+
+      expect(result).toBe(true);
+      expect(opener.postMessage).toHaveBeenCalledWith(
+        { type: 'cc_auth_complete', state: STATE },
+        window.location.origin
+      );
+    });
+  });
+});

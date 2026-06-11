@@ -24,7 +24,7 @@ import { createPaywall } from './paywall/index.js';
 import { createGate } from './paywall/gate.js';
 import { createComments } from './comments/index.js';
 import { tokenStorage, refreshTokenStorage } from './auth/storage.js';
-import { consumeTokenFromUrl } from './auth/popup.js';
+import { consumeAuthCodeFromUrl } from './auth/oauth.js';
 import { tryRefreshSession } from './auth/session.js';
 
 import type {
@@ -75,10 +75,7 @@ export class ContentCredits {
   // ── Internal start ────────────────────────────────────────────────────────
 
   private async _start(): Promise<void> {
-    // 1. Consume any token that arrived in the URL (mobile redirect flow)
-    consumeTokenFromUrl();
-
-    // 2. Wire config-level callbacks so developers don't need separate on() calls.
+    // 1. Wire config-level callbacks so developers don't need separate on() calls.
     if (this.config.onStateChange) {
       this.state.subscribe(this.config.onStateChange);
     }
@@ -98,7 +95,7 @@ export class ContentCredits {
       this.emitter.on('error', (payload) => this.config.onError!(payload));
     }
 
-    // 3. Hide premium content immediately (synchronous) before any async work.
+    // 2. Hide premium content immediately (synchronous) before any async work.
     //    This prevents the flash of full article content that would otherwise
     //    appear during the token-refresh and access-check network round-trips.
     //    Skipped in headless mode — the host app owns all DOM manipulation.
@@ -109,14 +106,21 @@ export class ContentCredits {
     });
     if (!this.config.headless) earlyGate.hide();
 
-    // 4. If no access token in memory/session, attempt a silent refresh.
+    // 4. Consume any auth code that arrived via redirect-back (mobile /
+    //    popup-blocked / COOP-severed popup flows) and exchange it for tokens.
+    const gotCodeFromUrl = await consumeAuthCodeFromUrl(this.config);
+    if (gotCodeFromUrl) {
+      this.state.set({ isLoggedIn: true });
+    }
+
+    // 5. If no access token in memory/session, attempt a silent refresh.
     //    This runs on every new browser session (after the browser was closed)
     //    and silently re-authenticates the user using their stored refresh token.
     if (!tokenStorage.has()) {
       await tryRefreshSession(this.config.apiBaseUrl);
     }
 
-    // 5. Pass the pre-created gate so createPaywall reuses the same instance
+    // 7. Pass the pre-created gate so createPaywall reuses the same instance
     // (and its hiddenNodes list) rather than creating a second one.
     this.paywallModule = createPaywall(
       this.config,

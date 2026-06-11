@@ -1,14 +1,13 @@
 import { createShadowHost, injectStyles, removeShadowHost } from '../ui/shadow.js';
 import { getCommentStyles } from '../ui/styles.js';
 import { el, setTextContent, renderCommentContent, sanitizeUrl } from '../ui/sanitize.js';
-import { openAuthPopup, isMobileDevice, consumeTokenFromUrl } from '../auth/popup.js';
+import { isMobileDevice } from '../auth/popup.js';
+import { login as oauthLogin } from '../auth/oauth.js';
 import { tokenStorage } from '../auth/storage.js';
 import { getUserIdFromToken } from '../auth/token.js';
 import type { createCommentsApi } from '../api/comments.js';
 import type { Comment, CommentSortBy, ResolvedConfig } from '../types/index.js';
 import type { EventEmitter } from '../core/events.js';
-
-declare const __ACCOUNTS_URL__: string;
 
 const PANEL_HOST_ID = 'cc-comments-host';
 
@@ -74,16 +73,14 @@ export function createCommentPanel(
   }
 
   async function doLogin(): Promise<void> {
-    const redirectUrl = encodeURIComponent(config.articleUrl);
-    const authUrl = `${__ACCOUNTS_URL__}/authenticate/extension?redirect=${redirectUrl}`;
-
     if (isMobileDevice()) {
-      window.location.href = authUrl;
+      // Full-page redirect — picked up by consumeAuthCodeFromUrl on reload.
+      void oauthLogin(config);
       return;
     }
 
-    const token = await openAuthPopup(authUrl);
-    if (token) {
+    const ok = await oauthLogin(config);
+    if (ok) {
       refreshUser();
       updateLoginOverlay();
       void loadComments();
@@ -675,10 +672,6 @@ export function createCommentPanel(
 
   function openPanel(): void {
     const r = ensureRoot();
-
-    // Check if token arrived from redirect
-    const redirectToken = consumeTokenFromUrl();
-    if (redirectToken) refreshUser();
 
     refreshUser();
 
