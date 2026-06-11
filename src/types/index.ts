@@ -124,9 +124,6 @@ export interface SDKConfig {
   /** Whether to enable the comment widget. Default: true */
   enableComments?: boolean;
 
-  /** Override the Chrome extension ID */
-  extensionId?: string;
-
   /** Visual theme options */
   theme?: SDKTheme;
 
@@ -331,6 +328,7 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   | 'onError'
   | 'theme'
 >> {
+  extensionId: string;
   articleUrl: string;
   hostName: string;
   pageTitle: string;

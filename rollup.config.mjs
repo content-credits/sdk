@@ -14,7 +14,6 @@ const replaceValues = {
   __ACCOUNTS_URL__: JSON.stringify(
     useLocalhost ? 'http://localhost:3000' : 'https://accounts.contentcredits.com'
   ),
-  __EXTENSION_ID__: JSON.stringify('ljehdpabbhgccmanhjdfacjnaigpgcml'),
   __VERSION__: JSON.stringify(process.env.npm_package_version || '2.0.0'),
   preventAssignment: true,
 };
