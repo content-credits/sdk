@@ -49,12 +49,16 @@ vi.mock('../src/extension/bridge.js', () => ({
 }));
 
 vi.mock('../src/auth/popup.js', () => ({
-  openAuthPopup: vi.fn(async () => {
-    if (popupToken) tokenPresent = true;
-    return popupToken;
-  }),
   isMobileDevice: vi.fn(() => false),
-  consumeTokenFromUrl: vi.fn(() => null),
+  openCenteredPopup: vi.fn(() => null),
+}));
+
+vi.mock('../src/auth/oauth.js', () => ({
+  login: vi.fn(async () => {
+    if (popupToken) tokenPresent = true;
+    return !!popupToken;
+  }),
+  consumeAuthCodeFromUrl: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('../src/auth/storage.js', () => ({

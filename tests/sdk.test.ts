@@ -30,8 +30,9 @@ vi.mock('../src/auth/session.js', () => ({
   tryRefreshSession: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock('../src/auth/popup.js', () => ({
-  consumeTokenFromUrl: vi.fn(),
+vi.mock('../src/auth/oauth.js', () => ({
+  consumeAuthCodeFromUrl: vi.fn().mockResolvedValue(false),
+  login: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('../src/extension/detector.js', () => ({
