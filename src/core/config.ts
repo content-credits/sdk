@@ -6,7 +6,7 @@ declare const __ACCOUNTS_URL__: string;
 function normalizeArticleUrl(articleUrl: string): string {
   try {
     const url = new URL(articleUrl);
-    ['token', 'cc_token', 'refresh_token', 'cc_refresh_token'].forEach(param => {
+    ['token', 'cc_token', 'refresh_token', 'cc_refresh_token', 'cc_auth_code', 'cc_state'].forEach(param => {
       url.searchParams.delete(param);
     });
     return url.toString();
