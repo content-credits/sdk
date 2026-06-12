@@ -129,13 +129,43 @@ describe('oauth', () => {
       expect(result).toBe(true);
       expect(tokenStorage.get()).toBe(VALID_JWT);
       expect(refreshTokenStorage.get()).toBe('refresh_123');
-      expect(popup.close).toHaveBeenCalled();
+      // The popup delivered the code via postMessage, so it's alive and owns
+      // its own close (it self-closes, or lingers on a post-signup screen).
+      // The SDK must NOT force-close it here.
+      expect(popup.close).not.toHaveBeenCalled();
 
       const [, requestInit] = vi.mocked(fetch).mock.calls[0];
       expect(JSON.parse(requestInit!.body as string)).toEqual({
         code: 'auth_code_123',
         code_verifier: VERIFIER,
       });
+    });
+
+    it('closes the popup when the code arrives via the poll fallback', async () => {
+      vi.useFakeTimers();
+      popup = { closed: false, close: vi.fn() };
+      // First call: token poll returns the code (opener severed by COOP, so no
+      // postMessage). Second call: the token exchange.
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'auth_code_456' }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          accessToken: VALID_JWT,
+          refreshToken: 'refresh_456',
+        }), { status: 200 }));
+
+      const loginPromise = login(config);
+
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1500); // one poll tick
+
+      const result = await loginPromise;
+
+      expect(result).toBe(true);
+      // The poll path means the popup couldn't self-close (severed opener), so
+      // the SDK closes the orphaned popup.
+      expect(popup.close).toHaveBeenCalled();
+
+      vi.useRealTimers();
     });
 
     it('resolves false if the popup is closed without delivering a code', async () => {
