@@ -51,4 +51,12 @@ describe('resolveConfig', () => {
     });
     expect(config.articleUrl).toBe('https://example.com/article/1?utm_source=test');
   });
+
+  it('scrubs PKCE redirect-back params from articleUrl before resolving config', () => {
+    const config = resolveConfig({
+      apiKey: 'pub_test',
+      articleUrl: 'https://example.com/article/1?cc_auth_code=abc&cc_state=def&utm_source=test',
+    });
+    expect(config.articleUrl).toBe('https://example.com/article/1?utm_source=test');
+  });
 });
