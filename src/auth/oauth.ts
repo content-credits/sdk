@@ -139,12 +139,19 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
     let settled = false;
     const expectedOrigin = accountsOrigin(config);
 
-    function finish(code: string | null): void {
+    // When the code arrives via postMessage the popup is alive and owns its own
+    // close — it self-closes after delivering, or lingers to show a post-signup
+    // screen (e.g. a signup-bonus celebration) before closing itself. Only the
+    // poll/timeout fallback closes the popup here: that path means the opener
+    // was severed (COOP) so the popup can't self-close, or it's stuck.
+    function finish(code: string | null, closePopup: boolean): void {
       if (settled) return;
       settled = true;
       clearInterval(pollTimer);
       window.removeEventListener('message', onMessage);
-      try { if (!popup.closed) popup.close(); } catch { /* ignore */ }
+      if (closePopup) {
+        try { if (!popup.closed) popup.close(); } catch { /* ignore */ }
+      }
       resolve(code);
     }
 
@@ -152,7 +159,7 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
       if (event.origin !== expectedOrigin) return;
       if (!isAuthCodeMessage(event.data)) return;
       if (event.data.state !== state || !event.data.code) return;
-      finish(event.data.code);
+      finish(event.data.code, false);
     }
 
     window.addEventListener('message', onMessage);
@@ -162,17 +169,17 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
       elapsed += POLL_INTERVAL_MS;
 
       if (popup.closed) {
-        finish(null);
+        finish(null, false);
         return;
       }
 
       if (elapsed > MAX_WAIT_MS) {
-        finish(null);
+        finish(null, true);
         return;
       }
 
       void pollForCode(config.apiBaseUrl, state).then(code => {
-        if (code) finish(code);
+        if (code) finish(code, true);
       });
     }, POLL_INTERVAL_MS);
   });
