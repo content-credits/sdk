@@ -1,0 +1,10 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = "npm install"
+run = "npm run build:watch"
+run_mode = "concurrent"
+
+[prompts]
+general = "Drop-in SDK alternative to extension. Check CROSS_REPO.md: meta tag name, auth token format, API calls, and ContentCredits.init() signature are shared with extension. Any breaking change requires coordinating with backend, docs, and demo."
+code_review = "Flag changes to public API (init options, method names), auth token handling, meta tag reading, or API endpoint calls."
