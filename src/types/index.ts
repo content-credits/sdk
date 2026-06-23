@@ -117,6 +117,10 @@ export interface ObservePostPayload {
   author?: string;
   publishedAt?: string;
   thumbnailUrl?: string;
+  /** Rotating, non-PII id used for anonymous-reader view dedup (design doc §7.4). */
+  anonId?: string;
+  /** `document.referrer` at beacon time, when available. */
+  referrer?: string;
 }
 
 /** Backend acks with the upserted Post id (shape TBD — kept loose intentionally). */

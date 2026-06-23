@@ -17,6 +17,8 @@ export function createPostsApi(client: ApiClient): PostsApi {
         ...(payload.author ? { author: payload.author } : {}),
         ...(payload.publishedAt ? { publishedAt: payload.publishedAt } : {}),
         ...(payload.thumbnailUrl ? { thumbnailUrl: payload.thumbnailUrl } : {}),
+        ...(payload.anonId ? { anonId: payload.anonId } : {}),
+        ...(payload.referrer ? { referrer: payload.referrer } : {}),
       });
     },
   };

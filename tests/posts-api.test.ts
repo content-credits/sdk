@@ -14,6 +14,8 @@ describe('posts api', () => {
       author: 'Jane',
       publishedAt: '2026-03-01T00:00:00Z',
       thumbnailUrl: 'https://example.com/img.jpg',
+      anonId: 'anon-abc-123',
+      referrer: 'https://google.com/search',
     });
 
     expect(client.post).toHaveBeenCalledWith('/posts/observe', {
@@ -24,6 +26,8 @@ describe('posts api', () => {
       author: 'Jane',
       publishedAt: '2026-03-01T00:00:00Z',
       thumbnailUrl: 'https://example.com/img.jpg',
+      anonId: 'anon-abc-123',
+      referrer: 'https://google.com/search',
     });
   });
 

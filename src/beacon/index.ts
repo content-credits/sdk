@@ -1,4 +1,5 @@
 import { scrapeMetadata } from './metadata.js';
+import { getOrCreateAnonId } from './anonId.js';
 import type { createPostsApi } from '../api/posts.js';
 import type { ResolvedConfig } from '../types/index.js';
 
@@ -26,6 +27,8 @@ export function sendBeacon(
         author: meta.author,
         publishedAt: meta.publishedAt,
         thumbnailUrl: meta.thumbnailUrl,
+        anonId: getOrCreateAnonId(),
+        referrer: document.referrer || undefined,
       })
       .catch(err => {
         if (config.debug) console.warn('[ContentCredits] beacon failed', err);
