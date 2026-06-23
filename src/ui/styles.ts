@@ -390,6 +390,16 @@ export function getCommentStyles(primaryColor: string, fontFamily: string): stri
       padding-left: 36px;
       background: #fafafa;
     }
+    .cc-comment-card.cc-comment-removed {
+      background: #f9fafb;
+    }
+    .cc-comment-removed-text {
+      color: #9ca3af;
+      font-size: 13px;
+    }
+    .cc-comment-removed-replies {
+      margin-top: 8px;
+    }
 
     .cc-comment-header {
       display: flex;

@@ -258,7 +258,42 @@ export function createCommentPanel(
     }
   }
 
+  /**
+   * Hidden/removed comments (moderation fields — design doc §4.1) must render
+   * as a placeholder rather than the real content or break the tree. Mirrors
+   * the extension's comment widget — keep this in lockstep with
+   * content-credits-extension/src/content/commentPanel.ts.
+   */
+  function buildModeratedCommentEl(comment: Comment, isReply: boolean): HTMLElement {
+    const card = el('div');
+    card.className = `cc-comment-card cc-comment-removed${isReply ? ' cc-reply' : ''}`;
+    card.dataset.commentId = comment._id;
+
+    const body = el('div');
+    body.className = 'cc-comment-body cc-comment-removed-text';
+    body.appendChild(el('em', comment.hiddenReason || 'This comment was removed by a moderator.'));
+    card.appendChild(body);
+
+    // Replies (if any) still render normally underneath a removed parent.
+    if (!isReply && comment.replies?.length) {
+      const repliesWrap = el('div');
+      repliesWrap.className = 'cc-comment-removed-replies';
+      comment.replies.forEach(reply => {
+        repliesWrap.appendChild(
+          reply.isActive === false ? buildModeratedCommentEl(reply, true) : buildCommentEl(reply, true)
+        );
+      });
+      card.appendChild(repliesWrap);
+    }
+
+    return card;
+  }
+
   function buildCommentEl(comment: Comment, isReply: boolean): HTMLElement {
+    if (comment.isActive === false) {
+      return buildModeratedCommentEl(comment, isReply);
+    }
+
     const isOwn = !!(currentUserId && comment.authorId === currentUserId);
     const author = comment.author;
     const authorName = author ? `${author.firstName} ${author.lastName}`.trim() : 'Anonymous';

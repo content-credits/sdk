@@ -20,12 +20,14 @@ import { createEventEmitter } from './core/events.js';
 import { createApiClient } from './api/client.js';
 import { createCreditsApi } from './api/credits.js';
 import { createCommentsApi } from './api/comments.js';
+import { createPostsApi } from './api/posts.js';
 import { createPaywall } from './paywall/index.js';
 import { createGate } from './paywall/gate.js';
 import { createComments } from './comments/index.js';
 import { tokenStorage, refreshTokenStorage } from './auth/storage.js';
 import { consumeAuthCodeFromUrl } from './auth/oauth.js';
 import { tryRefreshSession } from './auth/session.js';
+import { sendBeacon } from './beacon/index.js';
 
 import type {
   SDKConfig,
@@ -45,6 +47,7 @@ export class ContentCredits {
   private readonly client;
   private readonly creditsApi;
   private readonly commentsApi;
+  private readonly postsApi;
   private paywallModule: ReturnType<typeof createPaywall> | null = null;
   private commentsModule: ReturnType<typeof createComments> | null = null;
 
@@ -52,6 +55,7 @@ export class ContentCredits {
     this.client = createApiClient(config.apiBaseUrl, this.emitter);
     this.creditsApi = createCreditsApi(this.client);
     this.commentsApi = createCommentsApi(this.client);
+    this.postsApi = createPostsApi(this.client);
   }
 
   // ── Factory ───────────────────────────────────────────────────────────────
@@ -105,6 +109,11 @@ export class ContentCredits {
       paywallMode: this.config.paywallMode,
     });
     if (!this.config.headless) earlyGate.hide();
+
+    // 3. Fire the post-discovery / view beacon. Fire-and-forget and
+    //    independent of auth/paywall state — it must never block or be
+    //    blocked by the rest of the lifecycle (design doc §5.1, §7.1).
+    sendBeacon(this.config, this.postsApi);
 
     // 4. Consume any auth code that arrived via redirect-back (mobile /
     //    popup-blocked / COOP-severed popup flows) and exchange it for tokens.
@@ -312,6 +321,7 @@ function autoInit(): void {
     contentSelector: ds.ccContentSelector ?? ds.contentSelector,
     teaserParagraphs: ds.ccTeaserParagraphs ? parseInt(ds.ccTeaserParagraphs, 10) : undefined,
     enableComments: ds.ccEnableComments !== 'false',
+    enableBeacon: ds.ccEnableBeacon !== 'false',
     debug: ds.ccDebug === 'true',
   };
 

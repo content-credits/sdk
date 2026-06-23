@@ -37,6 +37,7 @@ export interface Article {
 export interface Comment {
   _id: string;
   threadId: string;
+  postId?: string | null;
   parentCommentId: string | null;
   authorId: string;
   content: string;
@@ -48,6 +49,14 @@ export interface Comment {
   updatedAt: string;
   author?: CommentAuthor;
   replies?: Comment[];
+
+  // ── Moderation (design doc §4.1) ────────────────────────────────────────
+  // `isActive: false` is the single visibility flag; these fields explain
+  // *why*/*who* when present. All optional — older comments / non-moderated
+  // comments simply omit them.
+  hiddenBy?: string | null;
+  hiddenReason?: string | null;
+  moderatedAt?: string | null;
 }
 
 export interface CommentAuthor {
@@ -62,6 +71,8 @@ export interface CommentThread {
   pageUrl: string;
   hostname: string;
   isOpen: boolean;
+  /** Links the thread to its canonical Post (design doc §3.1 / §4). Optional until backend ships it. */
+  postId?: string | null;
 }
 
 export type CommentSortBy = 'TOP' | 'NEWEST' | 'TIPPED_MOST';
@@ -95,6 +106,26 @@ export interface CommentsResponse {
 // Backend returns the thread object directly (no success wrapper)
 export type EnsureThreadResponse = CommentThread;
 
+// ─── Post discovery beacon (design doc §5.1) ─────────────────────────────────
+
+/** POST /posts/observe request body — fired once per page load. */
+export interface ObservePostPayload {
+  apiKey: string;
+  url: string;
+  canonicalUrl: string;
+  title: string;
+  author?: string;
+  publishedAt?: string;
+  thumbnailUrl?: string;
+}
+
+/** Backend acks with the upserted Post id (shape TBD — kept loose intentionally). */
+export interface ObservePostResponse {
+  success?: boolean;
+  postId?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Loosely-typed ReactDOM adapter — matches both React 18 (`createRoot`) and
  * React 16/17 (`render`) without pulling React into the SDK's own bundle.
@@ -123,6 +154,18 @@ export interface SDKConfig {
 
   /** Whether to enable the comment widget. Default: true */
   enableComments?: boolean;
+
+  /**
+   * Whether to fire the post-discovery beacon (`POST /posts/observe`) on page
+   * load. Scrapes `og:*` / JSON-LD / `<title>` metadata and reports it
+   * alongside the canonical URL — this is also the view event for analytics
+   * (design doc §5.1, §7.1). Disable if you're handling discovery yourself
+   * (e.g. via the WordPress plugin's server-side push) or to opt out of
+   * anonymous view tracking entirely.
+   *
+   * Default: `true`
+   */
+  enableBeacon?: boolean;
 
   /** Visual theme options */
   theme?: SDKTheme;
@@ -332,6 +375,8 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   articleUrl: string;
   hostName: string;
   pageTitle: string;
+  /** Client-computed canonical form of articleUrl (mirrors backend §2.2 rules). */
+  canonicalArticleUrl: string;
   apiBaseUrl: string;
   accountsUrl: string;
   paywallMode: 'inline' | 'overlay';

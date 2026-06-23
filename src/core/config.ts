@@ -1,3 +1,4 @@
+import { canonicalUrl } from '../utils/canonical.js';
 import type { SDKConfig, ResolvedConfig } from '../types/index.js';
 
 declare const __API_BASE_URL__: string;
@@ -34,9 +35,11 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     articleUrl,
     hostName,
     pageTitle: document.title,
+    canonicalArticleUrl: canonicalUrl(articleUrl),
     contentSelector: raw.contentSelector ?? '.cc-premium-content',
     teaserParagraphs: raw.teaserParagraphs ?? 2,
     enableComments: raw.enableComments ?? true,
+    enableBeacon: raw.enableBeacon ?? true,
     extensionId: 'ljehdpabbhgccmanhjdfacjnaigpgcml',
     debug: raw.debug ?? false,
     headless: raw.headless ?? false,
