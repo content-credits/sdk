@@ -63,26 +63,69 @@ export function createExtensionBridge(): ExtensionBridge {
     }
   }
 
+  /**
+   * Get the event suffix injected by the extension (if available).
+   * The extension uses randomized event names to prevent eavesdropping by malicious scripts.
+   */
+  function getEventSuffix(): string {
+    return ((window as unknown as Record<string, unknown>).__CC_EVENT_SUFFIX__ as string) || '';
+  }
+
+  // Store event listeners for cleanup in detach()
+  let authEventListener: ((e: Event) => void) | null = null;
+  let purchaseEventListener: ((e: Event) => void) | null = null;
+  let authEventName: string | null = null;
+  let purchaseEventName: string | null = null;
+
   function attach(): void {
     window.addEventListener('message', handleMessage);
-    // Extension also dispatches as CustomEvents on window
-    window.addEventListener('authorization_response', (e) => {
+
+    // Extension also dispatches as CustomEvents on window.
+    // Use randomized event names if the extension provides a suffix (security hardening).
+    const suffix = getEventSuffix();
+    authEventName = suffix ? `cc_auth_${suffix}` : 'authorization_response';
+    purchaseEventName = suffix ? `cc_purchase_${suffix}` : 'purchase_response';
+
+    authEventListener = (e: Event) => {
       const detail = (e as CustomEvent<{ data: AuthorizationResponseData }>).detail;
       if (detail?.data && authHandler) authHandler(detail.data);
-    });
-    window.addEventListener('purchase_response', (e) => {
+    };
+    purchaseEventListener = (e: Event) => {
       const detail = (e as CustomEvent<{ data: PurchaseResponseData }>).detail;
       if (detail?.data && purchaseHandler) purchaseHandler(detail.data);
-    });
+    };
+
+    window.addEventListener(authEventName, authEventListener);
+    window.addEventListener(purchaseEventName, purchaseEventListener);
   }
 
   function detach(): void {
     window.removeEventListener('message', handleMessage);
+    // Clean up CustomEvent listeners
+    if (authEventName && authEventListener) {
+      window.removeEventListener(authEventName, authEventListener);
+    }
+    if (purchaseEventName && purchaseEventListener) {
+      window.removeEventListener(purchaseEventName, purchaseEventListener);
+    }
+    authEventListener = null;
+    purchaseEventListener = null;
+    authEventName = null;
+    purchaseEventName = null;
+  }
+
+  /**
+   * Get the nonce injected by the extension (if available).
+   * The extension sets this to prevent spoofed messages from malicious scripts.
+   */
+  function getNonce(): string | undefined {
+    return (window as unknown as Record<string, unknown>).__CC_NONCE__ as string | undefined;
   }
 
   function requestAuthorization(articleId: string, hostName: string): void {
+    const nonce = getNonce();
     window.postMessage(
-      { type: 'request_authorization', data: { articleId, hostName } },
+      { type: 'request_authorization', nonce, data: { articleId, hostName } },
       window.location.origin
     );
   }
@@ -93,15 +136,17 @@ export function createExtensionBridge(): ExtensionBridge {
     location: string;
     title: string;
   }): void {
+    const nonce = getNonce();
     window.postMessage(
-      { type: 'request_purchase', data: params },
+      { type: 'request_purchase', nonce, data: params },
       window.location.origin
     );
   }
 
   function requestLogin(hostName: string): void {
+    const nonce = getNonce();
     window.postMessage(
-      { type: 'request_login', data: { hostName } },
+      { type: 'request_login', nonce, data: { hostName } },
       window.location.origin
     );
   }

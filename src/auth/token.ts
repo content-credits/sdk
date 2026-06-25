@@ -7,8 +7,14 @@ interface JwtPayload {
 }
 
 /**
- * Decode a JWT payload without verifying the signature.
- * Signature verification happens server-side on every API call.
+ * Decode JWT payload without signature verification.
+ *
+ * SECURITY NOTE: This is intentional. Signature verification happens
+ * server-side on every API call. Client-side decoding is only used for:
+ * - Checking token expiration before making requests
+ * - Reading non-sensitive claims for UI display
+ *
+ * An attacker crafting fake JWTs gains nothing - the server rejects them.
  */
 export function decodeJwt(token: string): JwtPayload | null {
   try {

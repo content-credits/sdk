@@ -4,6 +4,22 @@ const SESSION_KEY = 'cc_sdk_token';
 const REFRESH_KEY  = 'cc_rt';
 
 /**
+ * Token Storage Strategy
+ *
+ * SECURITY NOTE: Tokens stored in sessionStorage/localStorage are accessible
+ * to any JavaScript on the page. This is an intentional tradeoff:
+ * - HttpOnly cookies aren't accessible for API calls from JS
+ * - The publisher site must implement CSP to mitigate XSS
+ * - Refresh tokens are rotated on each use (reuse = revocation)
+ *
+ * Defense layers:
+ * 1. Memory-first storage (cleared on page unload)
+ * 2. Short-lived access tokens (15 min)
+ * 3. Refresh token rotation with reuse detection
+ * 4. Publisher-domain scoping (localStorage is origin-bound)
+ *
+ * ---
+ *
  * Three-layer auth storage:
  *
  *  ACCESS TOKEN (short-lived JWT, ~15 min)

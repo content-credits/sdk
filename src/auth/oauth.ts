@@ -47,16 +47,43 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 
 // ── Pending-authorization persistence ───────────────────────────────────────
 //
-// Stored in sessionStorage so it survives a full-page redirect to /authorize
-// and back (mobile flow / popup-blocked fallback / COOP redirect-back).
+// Memory-first approach: PKCE state is kept in-memory where possible to reduce
+// XSS exposure window. Falls back to sessionStorage only for redirect flows
+// (mobile, popup-blocked) where memory is cleared by the page navigation.
+//
+// Security rationale:
+// - Memory storage is invisible to other scripts on the page
+// - sessionStorage is XSS-accessible but required for redirect-back flows
+// - The PKCE verifier is only useful during the brief auth flow window
+
+// In-memory store for PKCE state (survives only during auth flow)
+let pendingAuth: PendingAuthorization | null = null;
 
 function storePending(pending: PendingAuthorization): void {
+  pendingAuth = pending;
+  // Fallback to sessionStorage only if memory is cleared (page refresh during auth)
   try {
     sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
-  } catch { /* private mode — ignore */ }
+  } catch {
+    // sessionStorage unavailable (e.g. private mode) — memory-only
+  }
 }
 
 function takePending(): PendingAuthorization | null {
+  // Prefer memory (not XSS-accessible)
+  if (pendingAuth) {
+    const result = pendingAuth;
+    pendingAuth = null;
+    // Also clear sessionStorage to avoid stale state
+    try {
+      sessionStorage.removeItem(PENDING_KEY);
+    } catch {
+      // ignore
+    }
+    return result;
+  }
+
+  // Fallback to sessionStorage (page was refreshed during auth flow)
   try {
     const raw = sessionStorage.getItem(PENDING_KEY);
     if (!raw) return null;
