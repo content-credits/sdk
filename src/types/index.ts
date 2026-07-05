@@ -10,17 +10,21 @@ export interface User {
   isVerified: boolean;
   isActive: boolean;
   linkedPublisherId?: string;
-  purchaseHistory: PurchaseItem[];
 }
 
 export type UserRole = 'consumer' | 'publisher' | 'admin';
 
-export interface PurchaseItem {
-  articleId: string;
-  postUrl: string;
-  postName: string;
-  creditsSpent: number;
+export interface PurchasedContentItem {
+  _id: string;
+  postId: string;
+  title: string;
+  url: string;
+  publisherName: string;
+  publisherId?: string;
+  publisherWebsite?: string;
+  thumbnailUrl?: string;
   purchasedAt: string;
+  creditsSpent: number;
 }
 
 export interface Article {
