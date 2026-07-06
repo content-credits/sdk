@@ -46,7 +46,6 @@ describe('state', () => {
       roles: ['consumer'],
       isVerified: true,
       isActive: true,
-      purchaseHistory: [],
     });
 
     expect(store.get()).toEqual(expect.objectContaining({
