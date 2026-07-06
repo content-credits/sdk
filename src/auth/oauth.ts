@@ -3,7 +3,11 @@ import { isMobileDevice, openCenteredPopup } from './popup.js';
 import type { ResolvedConfig } from '../types/index.js';
 
 const PENDING_KEY = 'cc_pkce_pending';
-const POLL_INTERVAL_MS = 1500;
+// Poll cadence for the `/auth/token/poll` fallback. Kept tight (well under the
+// popup's own ~300–500ms self-close) so a poll always runs before — and one
+// last time after — the popup goes away. A slower cadence let the popup close
+// before the first tick, so the fallback never fired and login hung.
+const POLL_INTERVAL_MS = 500;
 const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes
 
 interface PendingAuthorization {
@@ -164,7 +168,9 @@ function accountsOrigin(config: ResolvedConfig): string {
 function waitForCode(popup: Window, config: ResolvedConfig, state: string): Promise<string | null> {
   return new Promise(resolve => {
     let settled = false;
+    let polling = false;
     const expectedOrigin = accountsOrigin(config);
+    const startedAt = Date.now();
 
     // When the code arrives via postMessage the popup is alive and owns its own
     // close — it self-closes after delivering, or lingers to show a post-signup
@@ -191,23 +197,35 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
 
     window.addEventListener('message', onMessage);
 
-    let elapsed = 0;
+    // The popup hands its code to the server (`rawCodeForPoll`) whether or not
+    // its postMessage reaches us and whether or not it has self-closed, so this
+    // poll — not the message above — is the reliable path. Crucially we never
+    // give up on `popup.closed` alone: a closed popup may have left a code in
+    // the poll store, so we always run one more poll and only abandon the flow
+    // once that comes back empty.
     const pollTimer = setInterval(() => {
-      elapsed += POLL_INTERVAL_MS;
+      if (settled || polling) return;
 
-      if (popup.closed) {
-        finish(null, false);
-        return;
-      }
-
-      if (elapsed > MAX_WAIT_MS) {
+      if (Date.now() - startedAt > MAX_WAIT_MS) {
         finish(null, true);
         return;
       }
 
-      void pollForCode(config.apiBaseUrl, state).then(code => {
-        if (code) finish(code, true);
-      });
+      // Snapshot before the await: if the popup is already gone, this poll is
+      // our last chance to recover the code it left behind.
+      const popupGone = popup.closed;
+      polling = true;
+
+      void pollForCode(config.apiBaseUrl, state)
+        .then(code => {
+          if (settled) return;
+          if (code) {
+            finish(code, true);
+          } else if (popupGone) {
+            finish(null, false);
+          }
+        })
+        .finally(() => { polling = false; });
     }, POLL_INTERVAL_MS);
   });
 }
@@ -250,15 +268,23 @@ async function doLogin(config: ResolvedConfig): Promise<boolean> {
 
   const popup = openCenteredPopup(authUrl);
   if (!popup) {
-    // Popup blocked — fall back to full-page redirect.
+    // Popup blocked — fall back to full-page redirect. Leave the pending PKCE
+    // in sessionStorage: consumeAuthCodeFromUrl needs it on the next load.
     window.location.href = authUrl;
     return false;
   }
 
-  const code = await waitForCode(popup, config, state);
-  if (!code) return false;
-
-  return exchangeCode(config.apiBaseUrl, code, verifier);
+  try {
+    const code = await waitForCode(popup, config, state);
+    if (!code) return false;
+    return await exchangeCode(config.apiBaseUrl, code, verifier);
+  } finally {
+    // The popup path resolves the code in-memory and never routes back through
+    // consumeAuthCodeFromUrl, so nothing else clears the pending PKCE we stored
+    // above. Drop it here so it can't linger in sessionStorage after the
+    // attempt settles (whether it succeeded or failed).
+    takePending();
+  }
 }
 
 // ── Redirect-back consumption ────────────────────────────────────────────────
