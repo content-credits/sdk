@@ -156,7 +156,7 @@ describe('oauth', () => {
       const loginPromise = login(config);
 
       await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(1500); // one poll tick
+      await vi.advanceTimersByTimeAsync(500); // one poll tick
 
       const result = await loginPromise;
 
@@ -168,22 +168,82 @@ describe('oauth', () => {
       vi.useRealTimers();
     });
 
-    it('resolves false if the popup is closed without delivering a code', async () => {
+    it('recovers the code via a final poll when the popup self-closes before the first poll tick', async () => {
       vi.useFakeTimers();
       popup = { closed: false, close: vi.fn() };
+      // The popup's postMessage never reached us and it self-closed almost
+      // immediately (~300–500ms) — faster than a slow poll would ever tick.
+      // The code is still waiting server-side, so the post-close poll recovers
+      // it. First fetch: the poll. Second: the token exchange.
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'auth_code_789' }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          accessToken: VALID_JWT,
+          refreshToken: 'refresh_789',
+        }), { status: 200 }));
 
       const loginPromise = login(config);
 
-      // Simulate the user closing the popup before logging in.
+      await vi.advanceTimersByTimeAsync(0);
+      popup.closed = true;                     // self-closed before any poll ran
+      await vi.advanceTimersByTimeAsync(500);  // first poll tick still fires
+
+      const result = await loginPromise;
+
+      expect(result).toBe(true);
+      expect(tokenStorage.get()).toBe(VALID_JWT);
+      expect(refreshTokenStorage.get()).toBe('refresh_789');
+
+      vi.useRealTimers();
+    });
+
+    it('resolves false only after a final poll comes back empty on a closed popup', async () => {
+      vi.useFakeTimers();
+      popup = { closed: false, close: vi.fn() };
+      // User closed the popup before authenticating — no code was ever minted,
+      // so the final poll returns null and we give up.
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify({ code: null }), { status: 200 })
+      );
+
+      const loginPromise = login(config);
+
       await vi.advanceTimersByTimeAsync(0);
       popup.closed = true;
-      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(500);
 
       const result = await loginPromise;
       expect(result).toBe(false);
-      expect(fetch).not.toHaveBeenCalled();
+      // We poll once more on close rather than abandoning the code blindly.
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(fetch).mock.calls[0][0]).toContain('/auth/token/poll');
 
       vi.useRealTimers();
+    });
+
+    it('clears the pending PKCE entry from sessionStorage after a popup login settles', async () => {
+      popup = { closed: false, close: vi.fn() };
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+        accessToken: VALID_JWT,
+        refreshToken: 'refresh_123',
+      }), { status: 200 }));
+
+      const loginPromise = login(config);
+
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // Mid-flight the pending entry exists (needed by the redirect fallback).
+      expect(sessionStorage.getItem('cc_pkce_pending')).not.toBeNull();
+
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: new URL(config.accountsUrl).origin,
+        data: { type: 'cc_auth_code', code: 'auth_code_123', state: STATE },
+      }));
+
+      await loginPromise;
+
+      // Once the attempt settles it must not linger — otherwise the next silent
+      // login shows an orphaned `cc_pkce_pending` with no token beside it.
+      expect(sessionStorage.getItem('cc_pkce_pending')).toBeNull();
     });
   });
 
