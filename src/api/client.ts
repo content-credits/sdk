@@ -99,9 +99,12 @@ export function createApiClient(baseUrl: string, emitter: EventEmitter): ApiClie
       .catch(async (err: unknown) => {
         clearTimeout(timeoutId);
 
-        // Retry on network error or server error (not client error)
+        // Retry on network error or server error (not client error).
+        // Server-error retries are limited to GET — POST/PUT/DELETE can have
+        // side effects (e.g. a purchase), so a 500 from those should surface
+        // immediately rather than spinning through 3 more identical attempts.
         const isNetworkError = err instanceof TypeError && err.message.includes('fetch');
-        const isServerError = err instanceof ApiError && shouldRetry(err.status);
+        const isServerError = err instanceof ApiError && shouldRetry(err.status) && method === 'GET';
 
         if ((isNetworkError || isServerError) && attempt < MAX_RETRIES) {
           inFlight.delete(key);
