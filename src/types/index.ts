@@ -89,10 +89,14 @@ export interface ApiResponse<T = Record<string, unknown>> {
   data?: T;
 }
 
-// Backend returns { success: boolean, message: string } — success IS the access indicator
+// Backend returns { success, message, requiredCredits, creditBalance } — success IS
+// the access indicator; requiredCredits is the article's price and creditBalance is
+// the authenticated user's whole-credit balance (per-article pricing).
 export interface CheckAccessResponse {
   success: boolean;
   message?: string;
+  requiredCredits?: number;
+  creditBalance?: number;
 }
 
 // Backend returns { success: boolean, message: string } — no balance/creditsSpent in response

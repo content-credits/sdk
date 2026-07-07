@@ -192,6 +192,64 @@ describe('paywall flow', () => {
     }));
   });
 
+  it('passes per-article credit price to the purchase render on the direct-API path', async () => {
+    tokenPresent = true;
+    const state = createState();
+    const emitter = createEventEmitter();
+
+    const creditsApi = {
+      checkAccess: vi.fn().mockResolvedValue({
+        success: false,
+        requiredCredits: 3,
+        creditBalance: 10,
+      }),
+      purchaseArticle: vi.fn(),
+    };
+
+    const onPurchaseRequired = vi.fn();
+
+    const module = createPaywall({
+      apiKey: 'pub_123',
+      articleUrl: 'https://example.com/post',
+      hostName: 'example.com',
+      pageTitle: 'Hello',
+      contentSelector: '#article',
+      teaserParagraphs: 2,
+      enableComments: false,
+      extensionId: 'ext_123',
+      debug: false,
+      headless: false,
+      apiBaseUrl: 'https://api.contentcredits.com',
+      accountsUrl: 'https://accounts.contentcredits.com',
+      paywallTemplate: undefined,
+      onAccessGranted: undefined,
+      onStateChange: undefined,
+      onReady: undefined,
+      onLoginRequired: undefined,
+      onPurchaseRequired,
+      onInsufficientCredits: undefined,
+      onPurchased: undefined,
+      onUserLogin: undefined,
+      onUserLogout: undefined,
+      onError: undefined,
+      theme: { primaryColor: '#44C678', fontFamily: 'sans-serif' },
+    } as any, creditsApi as any, state, emitter, gateApi as any);
+
+    await module.init();
+
+    expect(rendererApi.render).toHaveBeenCalledWith(
+      'purchase',
+      expect.any(Object),
+      { requiredCredits: 3, creditBalance: 10 },
+    );
+    expect(onPurchaseRequired).toHaveBeenCalledWith({ requiredCredits: 3, creditBalance: 10 });
+    expect(state.get()).toEqual(expect.objectContaining({
+      requiredCredits: 3,
+      creditBalance: 10,
+      hasAccess: false,
+    }));
+  });
+
   it('processes successful purchases for logged-in users', async () => {
     tokenPresent = true;
     const state = createState();
