@@ -248,6 +248,8 @@ export function createPaywall(
         isLoaded: true,
         hasAccess: result.success,
         isLoggedIn: true,
+        requiredCredits: result.requiredCredits ?? null,
+        creditBalance: result.creditBalance ?? null,
       });
 
       if (result.success) {
@@ -255,7 +257,10 @@ export function createPaywall(
       } else {
         if (!config.headless) {
           gate.hide();
-          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+            requiredCredits: state.get().requiredCredits,
+            creditBalance: state.get().creditBalance,
+          });
         }
         config.onPurchaseRequired?.({
           requiredCredits: state.get().requiredCredits,
