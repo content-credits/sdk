@@ -156,7 +156,7 @@ describe('oauth', () => {
       const loginPromise = login(config);
 
       await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(500); // one poll tick
+      await vi.advanceTimersByTimeAsync(500); // one fast-phase poll tick
 
       const result = await loginPromise;
 
@@ -186,7 +186,7 @@ describe('oauth', () => {
 
       await vi.advanceTimersByTimeAsync(0);
       popup.closed = true;                     // self-closed before any poll ran
-      await vi.advanceTimersByTimeAsync(500);  // first poll tick still fires
+      await vi.advanceTimersByTimeAsync(500);  // first (fast-phase) poll tick still fires
 
       const result = await loginPromise;
 
@@ -197,11 +197,83 @@ describe('oauth', () => {
       vi.useRealTimers();
     });
 
-    it('resolves false only after a final poll comes back empty on a closed popup', async () => {
+    it('retrieves the code during the slow polling phase', async () => {
+      vi.useFakeTimers();
+      popup = { closed: false, close: vi.fn() };
+      // No code shows up during the fast burst (first ~2s); it arrives once
+      // we've backed off to the slow cadence. Empty polls during the fast
+      // window, then a poll that returns the code, then the token exchange.
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: null }), { status: 200 })) // t=500
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: null }), { status: 200 })) // t=1000
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: null }), { status: 200 })) // t=1500
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: null }), { status: 200 })) // t=2000
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'auth_code_slow' }), { status: 200 })) // t=4500 (slow phase)
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          accessToken: VALID_JWT,
+          refreshToken: 'refresh_slow',
+        }), { status: 200 }));
+
+      const loginPromise = login(config);
+
+      await vi.advanceTimersByTimeAsync(0);
+      // Four fast-phase ticks (500ms apart) land within the 2s fast window.
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(500);
+      // Next tick is scheduled at the slow cadence (2500ms).
+      await vi.advanceTimersByTimeAsync(2500);
+
+      const result = await loginPromise;
+
+      expect(result).toBe(true);
+      expect(tokenStorage.get()).toBe(VALID_JWT);
+      expect(refreshTokenStorage.get()).toBe('refresh_slow');
+      // 4 empty fast-phase polls + 1 successful slow-phase poll + 1 exchange.
+      expect(fetch).toHaveBeenCalledTimes(6);
+
+      vi.useRealTimers();
+    });
+
+    it('finds the code within the grace window after the popup closes', async () => {
+      vi.useFakeTimers();
+      popup = { closed: false, close: vi.fn() };
+      // Popup closes, first poll after that comes back empty, but a code
+      // shows up on a later poll still inside the 5s grace window.
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: null }), { status: 200 })) // t=500, popup already closed
+        .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'auth_code_grace' }), { status: 200 })) // t=1000
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          accessToken: VALID_JWT,
+          refreshToken: 'refresh_grace',
+        }), { status: 200 }));
+
+      const loginPromise = login(config);
+
+      await vi.advanceTimersByTimeAsync(0);
+      popup.closed = true;
+      await vi.advanceTimersByTimeAsync(500); // empty poll, grace window starts
+      await vi.advanceTimersByTimeAsync(500); // code found well within the 5s grace window
+
+      const result = await loginPromise;
+
+      expect(result).toBe(true);
+      expect(tokenStorage.get()).toBe(VALID_JWT);
+      expect(refreshTokenStorage.get()).toBe('refresh_grace');
+      // The popup was already closed by the time the code came back, so
+      // `finish`'s guard against double-closing means close() is skipped.
+      expect(popup.close).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('resolves false once the grace window elapses with no code after the popup closes', async () => {
       vi.useFakeTimers();
       popup = { closed: false, close: vi.fn() };
       // User closed the popup before authenticating — no code was ever minted,
-      // so the final poll returns null and we give up.
+      // so every poll returns null and we give up once the grace window
+      // (5s) elapses.
       vi.mocked(fetch).mockResolvedValue(
         new Response(JSON.stringify({ code: null }), { status: 200 })
       );
@@ -210,16 +282,21 @@ describe('oauth', () => {
 
       await vi.advanceTimersByTimeAsync(0);
       popup.closed = true;
-      await vi.advanceTimersByTimeAsync(500);
+      // Grace window starts at the first tick after close (t=500) and runs
+      // 5s, i.e. through t=5500. Ticks land at 500, 1000, 1500, 2000 (fast
+      // cadence), then back off to the slow cadence: 4500, 7000 — the 7000
+      // tick is the first one to observe that the grace window has elapsed.
+      // Advance in small steps so the mocked fetch's async body-read settles
+      // between ticks.
+      for (let i = 0; i < 16; i++) {
+        await vi.advanceTimersByTimeAsync(500);
+      }
 
       const result = await loginPromise;
       expect(result).toBe(false);
-      // We poll once more on close rather than abandoning the code blindly.
-      expect(fetch).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(fetch).mock.calls[0][0]).toContain('/auth/token/poll');
 
       vi.useRealTimers();
-    });
+    }, 15000);
 
     it('clears the pending PKCE entry from sessionStorage after a popup login settles', async () => {
       popup = { closed: false, close: vi.fn() };

@@ -3,12 +3,26 @@ import { isMobileDevice, openCenteredPopup } from './popup.js';
 import type { ResolvedConfig } from '../types/index.js';
 
 const PENDING_KEY = 'cc_pkce_pending';
-// Poll cadence for the `/auth/token/poll` fallback. Kept tight (well under the
-// popup's own ~300–500ms self-close) so a poll always runs before — and one
-// last time after — the popup goes away. A slower cadence let the popup close
-// before the first tick, so the fallback never fired and login hung.
-const POLL_INTERVAL_MS = 500;
+// Poll cadence for the `/auth/token/poll` fallback. The server holds a minted
+// code server-side (`rawCodeForPoll`) for a full AUTH_CODE_TTL after minting,
+// regardless of whether the popup is still alive — so the poll trusts that
+// TTL rather than racing the popup's self-close. That means we don't need a
+// tight cadence for the whole wait: a short fast burst (POLL_FAST_INTERVAL_MS
+// for POLL_FAST_WINDOW_MS) makes the common case — popup finishes almost
+// immediately — feel snappy, and after that we back off to
+// POLL_SLOW_INTERVAL_MS for the remainder of MAX_WAIT_MS. A flat 500ms
+// cadence for the full 5 minutes was up to ~600 requests per login, enough to
+// trip the backend's IP rate limiter for users behind a shared IP.
+const POLL_FAST_INTERVAL_MS = 500;
+const POLL_FAST_WINDOW_MS = 2000;
+const POLL_SLOW_INTERVAL_MS = 2500;
 const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes
+// Once popup.closed is observed, the popup itself is no longer proof the flow
+// is over — the server may still be holding a code it left behind just
+// before closing. Treat a closed popup as a signal of likely cancellation,
+// not immediate abandonment: keep polling for this grace window and only
+// resolve null if nothing shows up by the time it elapses.
+const POPUP_CLOSED_GRACE_MS = 5000;
 
 interface PendingAuthorization {
   state: string;
@@ -169,6 +183,7 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
   return new Promise(resolve => {
     let settled = false;
     let polling = false;
+    let popupClosedAt: number | null = null;
     const expectedOrigin = accountsOrigin(config);
     const startedAt = Date.now();
 
@@ -180,7 +195,7 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
     function finish(code: string | null, closePopup: boolean): void {
       if (settled) return;
       settled = true;
-      clearInterval(pollTimer);
+      clearTimeout(pollTimer);
       window.removeEventListener('message', onMessage);
       if (closePopup) {
         try { if (!popup.closed) popup.close(); } catch { /* ignore */ }
@@ -198,22 +213,41 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
     window.addEventListener('message', onMessage);
 
     // The popup hands its code to the server (`rawCodeForPoll`) whether or not
-    // its postMessage reaches us and whether or not it has self-closed, so this
-    // poll — not the message above — is the reliable path. Crucially we never
-    // give up on `popup.closed` alone: a closed popup may have left a code in
-    // the poll store, so we always run one more poll and only abandon the flow
-    // once that comes back empty.
-    const pollTimer = setInterval(() => {
+    // its postMessage reaches us, and the server holds it for AUTH_CODE_TTL
+    // (60s) regardless of the popup's lifetime — so this poll, not the popup's
+    // liveness, is what we trust. `popup.closed` is only a hint that the user
+    // may have cancelled: the first time we observe it, we start a short grace
+    // window (POPUP_CLOSED_GRACE_MS) and keep polling through it rather than
+    // abandoning on the very next empty response. A fast burst of ticks up
+    // front (POLL_FAST_INTERVAL_MS for POLL_FAST_WINDOW_MS) keeps the common
+    // case — popup finishes almost immediately — snappy; afterward we drop to
+    // POLL_SLOW_INTERVAL_MS since the 60s server-side TTL means there's no
+    // rush.
+    let pollTimer: ReturnType<typeof setTimeout>;
+
+    function scheduleNextPoll(delayMs: number): void {
+      pollTimer = setTimeout(tick, delayMs);
+    }
+
+    function tick(): void {
       if (settled || polling) return;
 
-      if (Date.now() - startedAt > MAX_WAIT_MS) {
+      const now = Date.now();
+
+      if (now - startedAt > MAX_WAIT_MS) {
         finish(null, true);
         return;
       }
 
-      // Snapshot before the await: if the popup is already gone, this poll is
-      // our last chance to recover the code it left behind.
-      const popupGone = popup.closed;
+      if (popup.closed && popupClosedAt === null) {
+        popupClosedAt = now;
+      }
+
+      if (popupClosedAt !== null && now - popupClosedAt > POPUP_CLOSED_GRACE_MS) {
+        finish(null, false);
+        return;
+      }
+
       polling = true;
 
       void pollForCode(config.apiBaseUrl, state)
@@ -221,12 +255,15 @@ function waitForCode(popup: Window, config: ResolvedConfig, state: string): Prom
           if (settled) return;
           if (code) {
             finish(code, true);
-          } else if (popupGone) {
-            finish(null, false);
+            return;
           }
+          const elapsed = Date.now() - startedAt;
+          scheduleNextPoll(elapsed < POLL_FAST_WINDOW_MS ? POLL_FAST_INTERVAL_MS : POLL_SLOW_INTERVAL_MS);
         })
         .finally(() => { polling = false; });
-    }, POLL_INTERVAL_MS);
+    }
+
+    scheduleNextPoll(POLL_FAST_INTERVAL_MS);
   });
 }
 
