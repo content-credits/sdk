@@ -203,7 +203,7 @@ export interface SDKConfig {
 
   /**
    * Custom label for the SDK's unlock/purchase button.
-   * Defaults to `'Unlock · N credits'` (when price is known) or `'Unlock article'`.
+   * Defaults to `'Unlock for N credits'` (when price is known) or `'Unlock article'`.
    *
    * @example
    * unlockButtonLabel: 'Unlock Just This Story'
@@ -227,7 +227,12 @@ export interface SDKConfig {
     loginDetail?: string;
     /** Heading shown in the purchase state. Default: 'Unlock this article' */
     purchaseHeading?: string;
-    /** Detail shown in the purchase state. Default: 'Use your Content Credits balance to instantly access this article.' */
+    /**
+     * Detail shown in the purchase state. Default when both the article price
+     * and the reader's balance are known: 'This article costs X credits — you
+     * have Y.' Otherwise: 'Use your Content Credits balance to instantly
+     * access this article.'
+     */
     purchaseDetail?: string;
     /** Heading shown when credits are insufficient. Default: 'Not enough credits' */
     insufficientHeading?: string;

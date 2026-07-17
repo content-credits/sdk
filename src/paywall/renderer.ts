@@ -195,7 +195,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
         renderLogin(body, callbacks);
         break;
       case 'purchase':
-        renderPurchase(body, callbacks, meta?.requiredCredits ?? null);
+        renderPurchase(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
         break;
       case 'insufficient':
         renderInsufficient(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
@@ -222,10 +222,22 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     parent.appendChild(poweredBy());
   }
 
-  function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null): void {
+  // Shared cost/balance formula — used by both the purchase-state and
+  // insufficient-state detail lines so the wording stays consistent.
+  function costLine(required: number, available: number): string {
+    return `This article costs ${required} credit${required !== 1 ? 's' : ''} — you have ${available}.`;
+  }
+
+  function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null, balance: number | null): void {
     if (config.showHeadings) {
       parent.appendChild(el('h2', config.paywallCopy?.purchaseHeading ?? 'Unlock this article'));
-      const detail = el('p', config.paywallCopy?.purchaseDetail ?? 'Use your Content Credits balance to instantly access this article.');
+      // Publisher-supplied copy always wins; otherwise show the concrete
+      // cost/balance line when both are known, else the static fallback.
+      const detailText = config.paywallCopy?.purchaseDetail
+        ?? (credits !== null && balance !== null
+          ? costLine(credits, balance)
+          : 'Use your Content Credits balance to instantly access this article.');
+      const detail = el('p', detailText);
       detail.className = 'cc-state-detail';
       parent.appendChild(detail);
     }
@@ -233,7 +245,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     // Credits shown inline in the button label — clear and scannable.
     // Publishers can override via `unlockButtonLabel`.
     const defaultLabel = credits !== null
-      ? `Unlock · ${credits} credit${credits !== 1 ? 's' : ''}`
+      ? `Unlock for ${credits} credit${credits !== 1 ? 's' : ''}`
       : 'Unlock article';
     const label = config.unlockButtonLabel ?? defaultLabel;
     const btn = el('button', label);
@@ -258,7 +270,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     const detail = el('p');
     detail.className = 'cc-state-detail';
     if (required !== null && available !== null) {
-      detail.textContent = `This article costs ${required} credit${required !== 1 ? 's' : ''} — you have ${available}.`;
+      detail.textContent = costLine(required, available);
     } else {
       detail.textContent = "You don't have enough credits to unlock this article.";
     }

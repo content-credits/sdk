@@ -276,7 +276,7 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
                 onClick={purchase}
                 className="w-full bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold tracking-wide py-3.5 rounded-full transition-colors"
               >
-                {cost !== null ? `Unlock for ${cost} Credits` : "Unlock Article"}
+                {cost !== null ? `Unlock for ${cost} credits` : "Unlock Article"}
               </button>
               <div className="flex items-center gap-3 my-4">
                 <div className="flex-1 h-px bg-gray-200" />
