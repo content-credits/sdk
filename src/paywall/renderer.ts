@@ -207,7 +207,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
     if (config.showHeadings) {
-      parent.appendChild(el('h2', config.paywallCopy?.loginHeading ?? 'This article requires a subscription'));
+      parent.appendChild(el('h2', config.paywallCopy?.loginHeading ?? 'Unlock this article with Content Credits'));
       const detail = el('p', config.paywallCopy?.loginDetail ?? 'Sign in to your Content Credits account to unlock this article.');
       detail.className = 'cc-state-detail';
       parent.appendChild(detail);
@@ -215,6 +215,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
     const btn = el('button', 'Sign in to read');
     btn.className = 'cc-btn cc-btn-sdk';
+    btn.dataset.ccAction = 'login';
     btn.addEventListener('click', () => { void cb.onLogin(); });
     parent.appendChild(btn);
 
@@ -237,6 +238,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     const label = config.unlockButtonLabel ?? defaultLabel;
     const btn = el('button', label);
     btn.className = 'cc-btn cc-btn-sdk';
+    btn.dataset.ccAction = 'purchase';
     btn.addEventListener('click', () => { void cb.onPurchase(); });
     parent.appendChild(btn);
 
@@ -262,7 +264,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     }
     parent.appendChild(detail);
 
-    const btn = el('button', 'Top up credits');
+    const btn = el('button', 'Buy credits');
     btn.className = 'cc-btn cc-btn-sdk';
     btn.addEventListener('click', () => cb.onBuyMoreCredits());
     parent.appendChild(btn);
@@ -294,11 +296,19 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     if (loading) {
       // Replace button content with spinner + label, preserving button size.
       // The spinner is white on the primary colour background — matches all states.
+      // The button retains a data-cc-action tag set when it was rendered (login
+      // or purchase), so we can say what's actually happening instead of a bare
+      // "Processing…". Falls back to "Processing…" for any other action.
+      const loadingLabel = btn.dataset.ccAction === 'login'
+        ? 'Signing in…'
+        : btn.dataset.ccAction === 'purchase'
+          ? 'Unlocking…'
+          : 'Processing…';
       const spinner = el('span');
       spinner.className = 'cc-spinner';
       setTextContent(btn, '');
       btn.appendChild(spinner);
-      btn.appendChild(document.createTextNode(' Processing…'));
+      btn.appendChild(document.createTextNode(` ${loadingLabel}`));
     }
   }
 

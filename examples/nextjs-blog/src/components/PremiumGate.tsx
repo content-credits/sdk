@@ -217,13 +217,10 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
                 onClick={login}
                 className="w-full bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold tracking-wide py-3.5 rounded-full transition-colors"
               >
-                Sign In to Read
+                Sign in to Read
               </button>
               <p className="mt-4 text-xs text-gray-400">
-                No account?{" "}
-                <button onClick={login} className="underline underline-offset-2 hover:text-gray-700 transition-colors">
-                  Create one free
-                </button>
+                No account? Signing in creates one automatically.
               </p>
             </>
           )}
@@ -248,7 +245,7 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
                 onClick={buyMoreCredits}
                 className="w-full bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold tracking-wide py-3.5 rounded-full transition-colors"
               >
-                Get More Credits
+                Buy Credits
               </button>
             </>
           )}
@@ -272,7 +269,7 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
                     balance of <strong className="text-gray-700">{balance}</strong>.
                   </>
                 ) : (
-                  "Purchase access to read the full article."
+                  "Unlock the full article with your credits."
                 )}
               </p>
               <button
@@ -290,7 +287,7 @@ export function PremiumGate({ apiKey, slug, teaserBlocks }: PremiumGateProps) {
                 onClick={buyMoreCredits}
                 className="w-full border border-gray-300 hover:border-gray-500 text-gray-700 text-sm font-semibold tracking-wide py-3.5 rounded-full transition-colors"
               >
-                Get More Credits
+                Buy Credits
               </button>
             </>
           )}

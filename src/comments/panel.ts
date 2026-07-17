@@ -457,8 +457,9 @@ export function createCommentPanel(
     sortLabel.className = 'cc-sort-label';
     sortBar.appendChild(sortLabel);
 
+    const sortLabels: Record<CommentSortBy, string> = { TOP: 'Top', NEWEST: 'Newest', TIPPED_MOST: 'Most tipped' };
     (['TOP', 'NEWEST'] as CommentSortBy[]).forEach(sort => {
-      const btn = el('button', sort);
+      const btn = el('button', sortLabels[sort]);
       btn.className = `cc-sort-btn${currentSort === sort ? ' cc-active' : ''}`;
       btn.dataset.sort = sort;
       btn.addEventListener('click', () => {
@@ -527,7 +528,7 @@ export function createCommentPanel(
     overlay.className = 'cc-login-overlay';
     overlay.id = 'cc-login-overlay';
     overlay.appendChild(el('p', 'Sign in to join the conversation'));
-    const btn = el('button', 'Login with Content Credits');
+    const btn = el('button', 'Sign in with Content Credits');
     btn.className = 'cc-login-overlay-btn';
     btn.addEventListener('click', () => void doLogin());
     overlay.appendChild(btn);

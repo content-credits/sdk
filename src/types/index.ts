@@ -221,7 +221,7 @@ export interface SDKConfig {
    * }
    */
   paywallCopy?: {
-    /** Heading shown in the login state. Default: 'This article requires a subscription' */
+    /** Heading shown in the login state. Default: 'Unlock this article with Content Credits' */
     loginHeading?: string;
     /** Detail shown in the login state. Default: 'Sign in to your Content Credits account to unlock this article.' */
     loginDetail?: string;
