@@ -101,6 +101,36 @@ describe('paywall renderer', () => {
     renderer.render('granted', { onLogin, onPurchase, onBuyMoreCredits });
     expect(document.getElementById('cc-paywall-host')).toBeNull();
   });
+
+  it('substitutes the {credits} token in unlockButtonLabel when the price is known', () => {
+    const renderer = createPaywallRenderer({
+      ...config,
+      unlockButtonLabel: 'Unlock with {credits} Content Credits',
+    } as any);
+    renderer.render('purchase', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 2 });
+    const button = document.getElementById('cc-paywall-host')!.shadowRoot!.querySelector('button')!;
+    expect(button.textContent).toBe('Unlock with 2 Content Credits');
+  });
+
+  it('strips the {credits} token cleanly when the price is unknown', () => {
+    const renderer = createPaywallRenderer({
+      ...config,
+      unlockButtonLabel: 'Unlock with {credits} Content Credits',
+    } as any);
+    renderer.render('purchase', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+    const button = document.getElementById('cc-paywall-host')!.shadowRoot!.querySelector('button')!;
+    expect(button.textContent).toBe('Unlock with Content Credits');
+  });
+
+  it('leaves unlockButtonLabel overrides without a token unchanged', () => {
+    const renderer = createPaywallRenderer({
+      ...config,
+      unlockButtonLabel: 'Read this story',
+    } as any);
+    renderer.render('purchase', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 5 });
+    const button = document.getElementById('cc-paywall-host')!.shadowRoot!.querySelector('button')!;
+    expect(button.textContent).toBe('Read this story');
+  });
 });
 
 describe('comment widget', () => {

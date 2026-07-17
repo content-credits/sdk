@@ -205,8 +205,15 @@ export interface SDKConfig {
    * Custom label for the SDK's unlock/purchase button.
    * Defaults to `'Unlock for N credits'` (when price is known) or `'Unlock article'`.
    *
+   * A `{credits}` token in the label is replaced with the article's price when
+   * known ('Unlock with {credits} Content Credits' → 'Unlock with 2 Content
+   * Credits') and stripped when unknown. Keep the price visible to readers:
+   * if you override both this label (without `{credits}`) and
+   * `paywallCopy.purchaseDetail`, the reader never sees the cost before a
+   * one-click spend.
+   *
    * @example
-   * unlockButtonLabel: 'Unlock Just This Story'
+   * unlockButtonLabel: 'Unlock with {credits} Content Credits'
    */
   unlockButtonLabel?: string;
 
@@ -223,7 +230,7 @@ export interface SDKConfig {
   paywallCopy?: {
     /** Heading shown in the login state. Default: 'Unlock this article with Content Credits' */
     loginHeading?: string;
-    /** Detail shown in the login state. Default: 'Sign in to your Content Credits account to unlock this article.' */
+    /** Detail shown in the login state. Default: 'Pay only for the articles you choose to read — no subscription. Sign in or create a free account to continue.' */
     loginDetail?: string;
     /** Heading shown in the purchase state. Default: 'Unlock this article' */
     purchaseHeading?: string;

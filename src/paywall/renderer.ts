@@ -208,7 +208,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   function renderLogin(parent: HTMLElement, cb: PaywallRendererCallbacks): void {
     if (config.showHeadings) {
       parent.appendChild(el('h2', config.paywallCopy?.loginHeading ?? 'Unlock this article with Content Credits'));
-      const detail = el('p', config.paywallCopy?.loginDetail ?? 'Sign in to your Content Credits account to unlock this article.');
+      const detail = el('p', config.paywallCopy?.loginDetail ?? 'Pay only for the articles you choose to read — no subscription. Sign in or create a free account to continue.');
       detail.className = 'cc-state-detail';
       parent.appendChild(detail);
     }
@@ -228,6 +228,16 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     return `This article costs ${required} credit${required !== 1 ? 's' : ''} — you have ${available}.`;
   }
 
+  // Publisher unlockButtonLabel overrides may contain a `{credits}` token.
+  // Price known → substitute the number; unknown → strip the token (and any
+  // doubled spaces it leaves) so "Unlock with {credits} Content Credits"
+  // degrades to "Unlock with Content Credits".
+  function applyCreditsToken(label: string, credits: number | null): string {
+    if (!label.includes('{credits}')) return label;
+    if (credits !== null) return label.replace(/\{credits\}/g, String(credits));
+    return label.replace(/\{credits\}/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
   function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null, balance: number | null): void {
     if (config.showHeadings) {
       parent.appendChild(el('h2', config.paywallCopy?.purchaseHeading ?? 'Unlock this article'));
@@ -243,11 +253,14 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     }
 
     // Credits shown inline in the button label — clear and scannable.
-    // Publishers can override via `unlockButtonLabel`.
+    // Publishers can override via `unlockButtonLabel`; a `{credits}` token in the
+    // override is replaced with the price (stripped when the price is unknown).
     const defaultLabel = credits !== null
       ? `Unlock for ${credits} credit${credits !== 1 ? 's' : ''}`
       : 'Unlock article';
-    const label = config.unlockButtonLabel ?? defaultLabel;
+    const label = config.unlockButtonLabel !== undefined
+      ? applyCreditsToken(config.unlockButtonLabel, credits)
+      : defaultLabel;
     const btn = el('button', label);
     btn.className = 'cc-btn cc-btn-sdk';
     btn.dataset.ccAction = 'purchase';
