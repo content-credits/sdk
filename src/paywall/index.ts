@@ -20,6 +20,25 @@ declare const __ACCOUNTS_URL__: string;
 // assume the extension isn't functional and proceed without it.
 const EXTENSION_RESPONSE_TIMEOUT_MS = 3_000;
 
+// ─── Error classification ────────────────────────────────────────────────────
+// The backend is rolling out a machine-readable `code` field on error bodies
+// (CONSUMER_MESSAGING_AUDIT_2026-07.md Part 4/5). Prefer `code` when the
+// backend has deployed it; fall back to the `status` checks that shipped in
+// Phase 0 for backends that haven't deployed the `code` field yet — both
+// paths must keep working since the backend change may land after this one.
+
+function isInsufficientCreditsError(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.code) return err.code === 'INSUFFICIENT_CREDITS';
+  return err.status === 402;
+}
+
+function isRateLimitedError(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.code) return err.code === 'RATE_LIMITED';
+  return err.status === 429;
+}
+
 export interface PaywallModule {
   init(): Promise<void>;
   checkAccess(): Promise<void>;
@@ -127,14 +146,14 @@ export function createPaywall(
         // can retry immediately. Publisher event below is unchanged.
         if (!config.headless) {
           renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
-            error: "Something went wrong and your article wasn't unlocked. Please try again.",
+            error: config.paywallCopy?.errorText ?? "Something went wrong and your article wasn't unlocked. Please try again.",
           });
         }
         emitter.emit('error', { message: result.message ?? 'Purchase failed' });
       }
     } catch (err) {
       state.set({ isLoading: false });
-      if (err instanceof ApiError && err.status === 402) {
+      if (isInsufficientCreditsError(err)) {
         // Insufficient credits — this must take precedence over the generic
         // inline purchase-error line; don't double-render.
         if (!config.headless) {
@@ -151,9 +170,9 @@ export function createPaywall(
         // Rate-limited retries get the specific copy from the OTP-incident
         // playbook; everything else (network blip, 5xx) gets the generic
         // purchase-failed line. Button stays enabled for retry either way.
-        const message = err instanceof ApiError && err.status === 429
+        const message = isRateLimitedError(err)
           ? 'Too many attempts. Please wait a few minutes and try again.'
-          : "Something went wrong and your article wasn't unlocked. Please try again.";
+          : config.paywallCopy?.errorText ?? "Something went wrong and your article wasn't unlocked. Please try again.";
         if (!config.headless) {
           renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, { error: message });
         }
@@ -301,7 +320,7 @@ export function createPaywall(
         // whether the reader is signed in — rendering `login` would wrongly
         // tell an already-signed-in reader to sign in again. Show a distinct
         // retry state instead and skip onLoginRequired.
-        const message = err instanceof ApiError && err.status === 429
+        const message = isRateLimitedError(err)
           ? 'Too many attempts. Please wait a few minutes and try again.'
           : "We couldn't check your access to this article. Please try again.";
         if (!config.headless) {
@@ -333,7 +352,7 @@ export function createPaywall(
           handleAccessGranted(data.creditsSpent ?? 0, data.creditBalance ?? 0);
         } else {
           renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
-            error: "Something went wrong and your article wasn't unlocked. Please try again.",
+            error: config.paywallCopy?.errorText ?? "Something went wrong and your article wasn't unlocked. Please try again.",
           });
           emitter.emit('error', { message: 'Purchase failed via extension' });
         }

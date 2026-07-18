@@ -426,6 +426,135 @@ describe('paywall flow', () => {
     );
   });
 
+  // ── Phase 3: error-code readiness (CONSUMER_MESSAGING_AUDIT_2026-07.md Part 4/5) ──
+
+  it('prefers ApiError.code === "INSUFFICIENT_CREDITS" over status when both are present', async () => {
+    tokenPresent = true;
+    const state = createState();
+    const emitter = createEventEmitter();
+
+    const creditsApi = {
+      checkAccess: vi.fn().mockResolvedValue({ success: false }),
+      // Status is a generic 400 (not 402) but the code says insufficient credits —
+      // code must win.
+      purchaseArticle: vi.fn().mockRejectedValue(new ApiError(400, 'Bad request', undefined, 'INSUFFICIENT_CREDITS')),
+    };
+
+    const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+    await module.purchase();
+
+    expect(rendererApi.render).toHaveBeenCalledWith('insufficient', expect.any(Object), expect.any(Object));
+  });
+
+  it('prefers ApiError.code === "RATE_LIMITED" over status when both are present', async () => {
+    tokenPresent = true;
+    const state = createState();
+    const emitter = createEventEmitter();
+
+    const creditsApi = {
+      checkAccess: vi.fn().mockResolvedValue({ success: false }),
+      // Status is 500 (not 429) but the code says rate-limited — code must win.
+      purchaseArticle: vi.fn().mockRejectedValue(new ApiError(500, 'Internal Server Error', undefined, 'RATE_LIMITED')),
+    };
+
+    const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+    await module.purchase();
+
+    expect(rendererApi.render).toHaveBeenCalledWith(
+      'purchase',
+      expect.any(Object),
+      { error: 'Too many attempts. Please wait a few minutes and try again.' }
+    );
+  });
+
+  it('falls back to status 402 for insufficient-credits when the backend has not deployed `code` yet', async () => {
+    tokenPresent = true;
+    const state = createState();
+    const emitter = createEventEmitter();
+
+    const creditsApi = {
+      checkAccess: vi.fn().mockResolvedValue({ success: false }),
+      purchaseArticle: vi.fn().mockRejectedValue(new ApiError(402, 'Insufficient credits')), // no `code`
+    };
+
+    const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+    await module.purchase();
+
+    expect(rendererApi.render).toHaveBeenCalledWith('insufficient', expect.any(Object), expect.any(Object));
+  });
+
+  it('falls back to status 429 for rate-limiting on access-check when the backend has not deployed `code` yet', async () => {
+    tokenPresent = true;
+    const state = createState();
+    const emitter = createEventEmitter();
+
+    const creditsApi = {
+      checkAccess: vi.fn().mockRejectedValue(new ApiError(429, 'Too Many Requests')), // no `code`
+      purchaseArticle: vi.fn(),
+    };
+
+    const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+    await module.init();
+
+    expect(rendererApi.render).toHaveBeenCalledWith(
+      'error',
+      expect.any(Object),
+      { error: 'Too many attempts. Please wait a few minutes and try again.' }
+    );
+  });
+
+  it('overrides the generic purchase-failure line via paywallCopy.errorText', async () => {
+    tokenPresent = true;
+    const state = createState();
+    const emitter = createEventEmitter();
+
+    const creditsApi = {
+      checkAccess: vi.fn().mockResolvedValue({ success: false }),
+      purchaseArticle: vi.fn().mockRejectedValue(new ApiError(500, 'Internal Server Error')),
+    };
+
+    const module = createPaywall(
+      baseConfig({ paywallCopy: { errorText: 'That did not work — give it another shot.' } }) as any,
+      creditsApi as any,
+      state,
+      emitter,
+      gateApi as any
+    );
+    await module.purchase();
+
+    expect(rendererApi.render).toHaveBeenCalledWith(
+      'purchase',
+      expect.any(Object),
+      { error: 'That did not work — give it another shot.' }
+    );
+  });
+
+  it('overrides the non-success (not thrown) purchase-failure line via paywallCopy.errorText', async () => {
+    tokenPresent = true;
+    const state = createState();
+    const emitter = createEventEmitter();
+
+    const creditsApi = {
+      checkAccess: vi.fn().mockResolvedValue({ success: false }),
+      purchaseArticle: vi.fn().mockResolvedValue({ success: false, message: 'Card declined' }),
+    };
+
+    const module = createPaywall(
+      baseConfig({ paywallCopy: { errorText: 'That did not work — give it another shot.' } }) as any,
+      creditsApi as any,
+      state,
+      emitter,
+      gateApi as any
+    );
+    await module.purchase();
+
+    expect(rendererApi.render).toHaveBeenCalledWith(
+      'purchase',
+      expect.any(Object),
+      { error: 'That did not work — give it another shot.' }
+    );
+  });
+
   it('renders the error state (not login) on a non-401 access-check failure, and skips onLoginRequired', async () => {
     tokenPresent = true;
     const state = createState();

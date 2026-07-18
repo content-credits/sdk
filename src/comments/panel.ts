@@ -50,6 +50,9 @@ export function createCommentPanel(
   let viewingSubthreadFor: string | null = null;
   let replyingToCommentId: string | null = null;
   let editingCommentId: string | null = null;
+  // Comment currently showing the in-panel "Delete this comment?" confirm row
+  // in place of its normal Edit/Delete controls (replaces window.confirm()).
+  let confirmingDeleteId: string | null = null;
 
   // ── Shadow DOM setup ──────────────────────────────────────────────────────
 
@@ -362,47 +365,87 @@ export function createCommentPanel(
 
     // Reply button (only on top-level)
     if (!isReply) {
+      const replyCount = comment.replies?.length ?? 0;
       const replyBtn = el('button');
       replyBtn.className = 'cc-action-btn';
       replyBtn.dataset.commentId = comment._id;
       replyBtn.dataset.action = 'reply';
+      // Icon + bare number has no accessible name on its own — label it
+      // explicitly. Recomputed from `comment.replies` on every re-render.
+      replyBtn.setAttribute('aria-label', `${replyCount} replies`);
       replyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:scaleX(-1)"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
       replyBtn.appendChild(document.createTextNode(` ${comment.replies?.length || 'Reply'}`));
       actions.appendChild(replyBtn);
     }
 
     // Like button
+    const likeCount = comment.likeCount ?? 0;
     const likeBtn = el('button');
     likeBtn.className = `cc-action-btn${comment.hasLiked ? ' cc-liked' : ''}`;
     likeBtn.dataset.commentId = comment._id;
     likeBtn.dataset.action = 'like';
+    // Same accessible-name gap as Reply — label it explicitly.
+    likeBtn.setAttribute('aria-label', `Like — ${likeCount} likes`);
     likeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="${comment.hasLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
     likeBtn.appendChild(document.createTextNode(` ${comment.likeCount ?? 0}`));
     actions.appendChild(likeBtn);
 
     // Owner controls
     if (isOwn) {
-      const ownerDiv = el('div');
-      ownerDiv.className = 'cc-action-btn cc-owner-actions';
-      ownerDiv.style.cssText = 'margin-left:auto;display:flex;gap:4px;background:transparent;border:none;padding:0;';
+      if (confirmingDeleteId === comment._id) {
+        actions.appendChild(buildDeleteConfirmRow(comment._id));
+      } else {
+        const ownerDiv = el('div');
+        ownerDiv.className = 'cc-action-btn cc-owner-actions';
+        ownerDiv.style.cssText = 'margin-left:auto;display:flex;gap:4px;background:transparent;border:none;padding:0;';
 
-      const editBtn = el('button', 'Edit');
-      editBtn.className = 'cc-action-btn';
-      editBtn.dataset.commentId = comment._id;
-      editBtn.dataset.action = 'edit';
+        const editBtn = el('button', 'Edit');
+        editBtn.className = 'cc-action-btn';
+        editBtn.dataset.commentId = comment._id;
+        editBtn.dataset.action = 'edit';
 
-      const deleteBtn = el('button', 'Delete');
-      deleteBtn.className = 'cc-action-btn cc-danger';
-      deleteBtn.dataset.commentId = comment._id;
-      deleteBtn.dataset.action = 'delete';
+        const deleteBtn = el('button', 'Delete');
+        deleteBtn.className = 'cc-action-btn cc-danger';
+        deleteBtn.dataset.commentId = comment._id;
+        deleteBtn.dataset.action = 'delete';
 
-      ownerDiv.appendChild(editBtn);
-      ownerDiv.appendChild(deleteBtn);
-      actions.appendChild(ownerDiv);
+        ownerDiv.appendChild(editBtn);
+        ownerDiv.appendChild(deleteBtn);
+        actions.appendChild(ownerDiv);
+      }
     }
 
     card.appendChild(actions);
     return card;
+  }
+
+  /**
+   * In-panel replacement for the owner's action row while a delete is
+   * pending confirmation — no blocking `window.confirm()` (audit Part 4/5).
+   * Delete wires to the existing delete path; Cancel restores the normal
+   * Edit/Delete row via a re-render.
+   */
+  function buildDeleteConfirmRow(commentId: string): HTMLElement {
+    const row = el('div');
+    row.className = 'cc-delete-confirm-row';
+
+    const label = el('span', 'Delete this comment?');
+    label.className = 'cc-delete-confirm-label';
+    row.appendChild(label);
+
+    const confirmBtn = el('button', 'Delete');
+    confirmBtn.className = 'cc-action-btn cc-danger cc-delete-confirm-btn';
+    confirmBtn.dataset.commentId = commentId;
+    confirmBtn.dataset.action = 'delete-confirm';
+    row.appendChild(confirmBtn);
+
+    const cancelBtn = el('button', 'Cancel');
+    cancelBtn.className = 'cc-action-btn';
+    cancelBtn.dataset.commentId = commentId;
+    cancelBtn.dataset.action = 'delete-cancel';
+    row.appendChild(cancelBtn);
+
+    return row;
   }
 
   // ── Panel DOM Structure ───────────────────────────────────────────────────
@@ -550,7 +593,9 @@ export function createCommentPanel(
       case 'reply': handleReply(commentId); break;
       case 'like': void handleLike(commentId); break;
       case 'edit': handleEdit(commentId); break;
-      case 'delete': void handleDelete(commentId); break;
+      case 'delete': handleDeleteRequest(commentId); break;
+      case 'delete-confirm': void handleDeleteConfirmed(commentId); break;
+      case 'delete-cancel': handleDeleteCancel(); break;
     }
   }
 
@@ -621,8 +666,21 @@ export function createCommentPanel(
     showCancel();
   }
 
-  async function handleDelete(commentId: string): Promise<void> {
-    if (!confirm('Delete this comment?')) return;
+  // In-panel confirm (no window.confirm — see buildDeleteConfirmRow above).
+  function handleDeleteRequest(commentId: string): void {
+    confirmingDeleteId = commentId;
+    const listEl = root?.getElementById('cc-comments-list');
+    if (listEl) renderComments(listEl);
+  }
+
+  function handleDeleteCancel(): void {
+    confirmingDeleteId = null;
+    const listEl = root?.getElementById('cc-comments-list');
+    if (listEl) renderComments(listEl);
+  }
+
+  async function handleDeleteConfirmed(commentId: string): Promise<void> {
+    confirmingDeleteId = null;
     try {
       // Backend returns the deleted comment object directly (check _id for success)
       const res = await commentsApi.deleteComment(commentId);

@@ -243,6 +243,24 @@ export interface SDKConfig {
     purchaseDetail?: string;
     /** Heading shown when credits are insufficient. Default: 'Not enough credits' */
     insufficientHeading?: string;
+    /**
+     * Detail shown when credits are insufficient. Default when both the
+     * article price and the reader's balance are known: 'This article costs
+     * X credits — you have Y.' Otherwise: 'You don't have enough credits to
+     * unlock this article.'
+     */
+    insufficientDetail?: string;
+    /** Label for the sign-in button in the login state. Default: 'Sign in to read' */
+    signInButtonLabel?: string;
+    /** Label for the buy-credits button in the insufficient state. Default: 'Buy credits' */
+    buyCreditsButtonLabel?: string;
+    /**
+     * Overrides the generic purchase-failure line shown after a failed
+     * unlock attempt (network error, 5xx, or any non-402/429 failure).
+     * Default: "Something went wrong and your article wasn't unlocked.
+     * Please try again."
+     */
+    errorText?: string;
   };
 
   /**

@@ -486,6 +486,25 @@ export function getCommentStyles(primaryColor: string, fontFamily: string): stri
     .cc-action-btn.cc-danger:hover { color: #ef4444; background: #fef2f2; }
     .cc-action-btn.cc-owner-actions { margin-left: auto; }
 
+    /* ── In-panel delete confirmation (replaces window.confirm) ─────────── */
+    .cc-delete-confirm-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .cc-delete-confirm-label {
+      font-size: 12px;
+      color: #374151;
+      font-weight: 500;
+    }
+    .cc-delete-confirm-btn {
+      color: #b91c1c;
+      background: #fef2f2;
+      font-weight: 600;
+    }
+    .cc-delete-confirm-btn:hover { background: #fee2e2; }
+
     /* ── Reply Subthread ─────────────────────────────────── */
     .cc-subthread-label {
       font-size: 11px;
