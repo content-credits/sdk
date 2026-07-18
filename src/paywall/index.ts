@@ -121,13 +121,22 @@ export function createPaywall(
         handleAccessGranted(0, 0);
       } else {
         state.set({ isLoading: false });
-        if (!config.headless) renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        // Reader-facing failure feedback: reverting the button silently with no
+        // explanation leaves a paying user with zero feedback on why nothing
+        // happened. The button stays enabled (via the `purchase` state) so they
+        // can retry immediately. Publisher event below is unchanged.
+        if (!config.headless) {
+          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+            error: "Something went wrong and your article wasn't unlocked. Please try again.",
+          });
+        }
         emitter.emit('error', { message: result.message ?? 'Purchase failed' });
       }
     } catch (err) {
       state.set({ isLoading: false });
       if (err instanceof ApiError && err.status === 402) {
-        // Insufficient credits
+        // Insufficient credits — this must take precedence over the generic
+        // inline purchase-error line; don't double-render.
         if (!config.headless) {
           renderer.render('insufficient', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
             requiredCredits: state.get().requiredCredits,
@@ -139,7 +148,15 @@ export function createPaywall(
         config.onInsufficientCredits?.({ required, available });
         emitter.emit('credits:insufficient', { required, available });
       } else {
-        if (!config.headless) renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        // Rate-limited retries get the specific copy from the OTP-incident
+        // playbook; everything else (network blip, 5xx) gets the generic
+        // purchase-failed line. Button stays enabled for retry either way.
+        const message = err instanceof ApiError && err.status === 429
+          ? 'Too many attempts. Please wait a few minutes and try again.'
+          : "Something went wrong and your article wasn't unlocked. Please try again.";
+        if (!config.headless) {
+          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, { error: message });
+        }
         config.onPurchaseRequired?.({
           requiredCredits: state.get().requiredCredits,
           creditBalance: state.get().creditBalance,
@@ -270,12 +287,32 @@ export function createPaywall(
       }
     } catch (err) {
       state.set({ isLoading: false, isLoaded: true });
-      if (!config.headless) {
-        gate.hide();
-        renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
-      }
-      config.onLoginRequired?.();
-      if (!(err instanceof ApiError && err.status === 401)) {
+
+      if (err instanceof ApiError && err.status === 401) {
+        // Genuinely unauthenticated (or the silent refresh gave up) — the
+        // login state is correct here.
+        if (!config.headless) {
+          gate.hide();
+          renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        }
+        config.onLoginRequired?.();
+      } else {
+        // A non-401 failure (network blip, 5xx, rate limit) says nothing about
+        // whether the reader is signed in — rendering `login` would wrongly
+        // tell an already-signed-in reader to sign in again. Show a distinct
+        // retry state instead and skip onLoginRequired.
+        const message = err instanceof ApiError && err.status === 429
+          ? 'Too many attempts. Please wait a few minutes and try again.'
+          : "We couldn't check your access to this article. Please try again.";
+        if (!config.headless) {
+          gate.hide();
+          renderer.render('error', {
+            onLogin: doLogin,
+            onPurchase: doPurchase,
+            onBuyMoreCredits: doBuyMoreCredits,
+            onRetry: checkAccess,
+          }, { error: message });
+        }
         emitter.emit('error', { message: 'Access check failed', error: err });
       }
     }
@@ -295,7 +332,9 @@ export function createPaywall(
         if (data.doesHaveAccess) {
           handleAccessGranted(data.creditsSpent ?? 0, data.creditBalance ?? 0);
         } else {
-          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+            error: "Something went wrong and your article wasn't unlocked. Please try again.",
+          });
           emitter.emit('error', { message: 'Purchase failed via extension' });
         }
       });

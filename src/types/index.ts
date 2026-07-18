@@ -423,6 +423,17 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
 }
 
 // ─── SDK state ───────────────────────────────────────────────────────────────
+//
+// Note: `PaywallUIState` (`src/paywall/renderer.ts` — 'checking' | 'login' |
+// 'purchase' | 'insufficient' | 'loading' | 'granted' | 'error') is a private
+// implementation detail of the built-in renderer's DOM rebuilds. It is never
+// serialized here or on any public event payload — `onStateChange`/`subscribe`
+// only ever receive the boolean-flag `SDKState` snapshot below. That's why
+// adding the 'error' state (Phase 0 trust-bug fix — see
+// CONSUMER_MESSAGING_AUDIT_2026-07.md Part 1.3) for non-401 access-check
+// failures was safe to do without a version bump or a publisher-facing
+// migration: it can't collide with anything in a publisher's `onStateChange`
+// switch statement.
 
 export interface SDKState {
   isLoading: boolean;

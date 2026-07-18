@@ -112,6 +112,17 @@ export function getPaywallStyles(primaryColor: string, fontFamily: string, backd
       line-height: 1.6;
     }
 
+    /* ─── Inline error line (failed purchase / access-check retry) ───────── */
+    /* Sits above the action button. #b91c1c passes AA contrast on the panel's
+       white background (unlike the lighter #ef4444 used for the comment-panel
+       error icon, which is decorative rather than body text). */
+    .cc-error {
+      font-size: 13px;
+      color: #b91c1c;
+      line-height: 1.5;
+      margin-bottom: 2px;
+    }
+
     /* ─── Spinner (lives inside .cc-btn-primary while loading) ──────────── */
     .cc-spinner {
       display: inline-block;
@@ -190,6 +201,13 @@ export function getSdkButtonStyles(sdkButtonColor: string, fontFamily: string): 
       font-size: 14px;
       color: #64748b;
       line-height: 1.6;
+    }
+
+    .cc-error {
+      font-size: 13px;
+      color: #b91c1c;
+      line-height: 1.5;
+      margin-bottom: 2px;
     }
 
     .cc-spinner {

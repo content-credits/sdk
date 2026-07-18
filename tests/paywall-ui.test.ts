@@ -131,6 +131,73 @@ describe('paywall renderer', () => {
     const button = document.getElementById('cc-paywall-host')!.shadowRoot!.querySelector('button')!;
     expect(button.textContent).toBe('Read this story');
   });
+
+  // Phase 0 trust fix (CONSUMER_MESSAGING_AUDIT_2026-07.md Part 1.3): a failed
+  // purchase must not silently revert the button with zero explanation.
+  it('shows an inline error line on a failed purchase and keeps the unlock button clickable for retry', () => {
+    const renderer = createPaywallRenderer(config as any);
+    const onPurchase = vi.fn();
+
+    renderer.render(
+      'purchase',
+      { onLogin: vi.fn(), onPurchase, onBuyMoreCredits: vi.fn() },
+      { requiredCredits: 3, error: "Something went wrong and your article wasn't unlocked. Please try again." }
+    );
+
+    const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+    const errorEl = shadowRoot.querySelector('.cc-error')!;
+    expect(errorEl).not.toBeNull();
+    expect(errorEl.textContent).toBe("Something went wrong and your article wasn't unlocked. Please try again.");
+
+    const button = shadowRoot.querySelector<HTMLButtonElement>('.cc-btn')!;
+    expect(button.disabled).toBe(false);
+    button.click();
+    expect(onPurchase).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render an error line on the purchase state when no error is passed', () => {
+    const renderer = createPaywallRenderer(config as any);
+    renderer.render('purchase', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 3 });
+    const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+    expect(shadowRoot.querySelector('.cc-error')).toBeNull();
+  });
+
+  // Phase 0 trust fix: a non-401 access-check failure must show a distinct
+  // retry state instead of wrongly telling a signed-in reader to sign in.
+  it('renders the error state with a working Try again button, distinct from login', () => {
+    const renderer = createPaywallRenderer({ ...config, showHeadings: true } as any);
+    const onRetry = vi.fn();
+
+    renderer.render(
+      'error',
+      { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn(), onRetry },
+      { error: "We couldn't check your access to this article. Please try again." }
+    );
+
+    const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+    expect(shadowRoot.querySelector('h2')!.textContent).toBe('Something went wrong');
+    expect(shadowRoot.querySelector('.cc-state-detail')!.textContent)
+      .toBe("We couldn't check your access to this article. Please try again.");
+    // Not the login state's "Sign in to read" button.
+    expect(shadowRoot.textContent).not.toContain('Sign in to read');
+
+    const button = shadowRoot.querySelector<HTMLButtonElement>('.cc-btn')!;
+    expect(button.textContent).toBe('Try again');
+    button.click();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows rate-limit copy in the error state for a 429', () => {
+    const renderer = createPaywallRenderer(config as any);
+    renderer.render(
+      'error',
+      { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn(), onRetry: vi.fn() },
+      { error: 'Too many attempts. Please wait a few minutes and try again.' }
+    );
+    const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+    expect(shadowRoot.querySelector('.cc-state-detail')!.textContent)
+      .toBe('Too many attempts. Please wait a few minutes and try again.');
+  });
 });
 
 describe('comment widget', () => {

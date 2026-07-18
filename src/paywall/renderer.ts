@@ -12,11 +12,17 @@ export type PaywallUIState =
   | 'insufficient'  // logged in but not enough credits
   | 'loading'       // purchase/login in progress
   | 'granted'       // access granted, overlay removed
+  | 'error'         // a non-401 access-check failure (network blip, 5xx, rate limit);
+                    // distinct from `login` so a signed-in reader isn't told to sign in.
+                    // Internal-only — never surfaced through `SDKState`/`onStateChange`
+                    // (see the `PaywallUIState` note in `src/types/index.ts`).
 
 export interface PaywallRendererCallbacks {
   onLogin(): void | Promise<void>;
   onPurchase(): void | Promise<void>;
   onBuyMoreCredits(): void;
+  /** Re-run the access check. Only used by the `error` state's "Try again" button. */
+  onRetry?(): void | Promise<void>;
 }
 
 export interface PaywallRenderer {
@@ -24,7 +30,7 @@ export interface PaywallRenderer {
   render(
     state: PaywallUIState,
     callbacks: PaywallRendererCallbacks,
-    meta?: { requiredCredits?: number | null; creditBalance?: number | null }
+    meta?: { requiredCredits?: number | null; creditBalance?: number | null; error?: string | null }
   ): void;
   setButtonLoading(loading: boolean): void;
   destroy(): void;
@@ -154,7 +160,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   function render(
     state: PaywallUIState,
     callbacks: PaywallRendererCallbacks,
-    meta?: { requiredCredits?: number | null; creditBalance?: number | null }
+    meta?: { requiredCredits?: number | null; creditBalance?: number | null; error?: string | null }
   ): void {
     if (isDestroyed) return;
     if (state === 'checking') return;
@@ -195,10 +201,13 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
         renderLogin(body, callbacks);
         break;
       case 'purchase':
-        renderPurchase(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
+        renderPurchase(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null, meta?.error ?? null);
         break;
       case 'insufficient':
         renderInsufficient(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
+        break;
+      case 'error':
+        renderError(body, callbacks, meta?.error ?? null);
         break;
     }
   }
@@ -238,7 +247,13 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     return label.replace(/\{credits\}/g, '').replace(/\s{2,}/g, ' ').trim();
   }
 
-  function renderPurchase(parent: HTMLElement, cb: PaywallRendererCallbacks, credits: number | null, balance: number | null): void {
+  function renderPurchase(
+    parent: HTMLElement,
+    cb: PaywallRendererCallbacks,
+    credits: number | null,
+    balance: number | null,
+    errorMessage?: string | null
+  ): void {
     if (config.showHeadings) {
       parent.appendChild(el('h2', config.paywallCopy?.purchaseHeading ?? 'Unlock this article'));
       // Publisher-supplied copy always wins; otherwise show the concrete
@@ -250,6 +265,15 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       const detail = el('p', detailText);
       detail.className = 'cc-state-detail';
       parent.appendChild(detail);
+    }
+
+    // Inline failure feedback for a failed purchase attempt (a paying user must
+    // never see a silent revert to this same state with no explanation). Sits
+    // above the button so it's the last thing read before retrying.
+    if (errorMessage) {
+      const errorEl = el('p', errorMessage);
+      errorEl.className = 'cc-error';
+      parent.appendChild(errorEl);
     }
 
     // Credits shown inline in the button label — clear and scannable.
@@ -292,6 +316,27 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     const btn = el('button', 'Buy credits');
     btn.className = 'cc-btn cc-btn-sdk';
     btn.addEventListener('click', () => cb.onBuyMoreCredits());
+    parent.appendChild(btn);
+
+    parent.appendChild(poweredBy());
+  }
+
+  // Non-401 access-check failure (network blip, 5xx, rate limit). Distinct from
+  // `login` — telling an already-signed-in reader to sign in again is wrong and
+  // erodes trust. Offers a retry instead of a dead end.
+  function renderError(parent: HTMLElement, cb: PaywallRendererCallbacks, message: string | null): void {
+    if (config.showHeadings) {
+      parent.appendChild(el('h2', 'Something went wrong'));
+    }
+
+    const detail = el('p', message ?? "We couldn't check your access to this article. Please try again.");
+    detail.className = 'cc-state-detail';
+    parent.appendChild(detail);
+
+    const btn = el('button', 'Try again');
+    btn.className = 'cc-btn cc-btn-sdk';
+    btn.dataset.ccAction = 'retry';
+    btn.addEventListener('click', () => { void cb.onRetry?.(); });
     parent.appendChild(btn);
 
     parent.appendChild(poweredBy());
