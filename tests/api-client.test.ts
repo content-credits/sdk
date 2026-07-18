@@ -76,6 +76,47 @@ describe('createApiClient', () => {
     expect(emitter.emit).toHaveBeenCalledWith('auth:logout', {});
   });
 
+  // ── Phase 3: error-code readiness (CONSUMER_MESSAGING_AUDIT_2026-07.md Part 4/5) ──
+
+  it('parses `code` from the error response body onto ApiError', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, message: 'Not enough credits', code: 'INSUFFICIENT_CREDITS' }), { status: 402 })
+    );
+
+    const emitter = makeMockEmitter();
+    const client = createApiClient(BASE_URL, emitter);
+
+    try {
+      await client.post('/credits/purchase-article', {});
+      expect.unreachable('expected client.post to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      const apiErr = err as ApiError;
+      expect(apiErr.status).toBe(402);
+      expect(apiErr.code).toBe('INSUFFICIENT_CREDITS');
+      expect(apiErr.message).toBe('Not enough credits');
+    }
+  });
+
+  it('leaves ApiError.code undefined when the response body has no `code` field', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Not found' }), { status: 404 })
+    );
+
+    const emitter = makeMockEmitter();
+    const client = createApiClient(BASE_URL, emitter);
+
+    try {
+      await client.get('/missing');
+      expect.unreachable('expected client.get to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).code).toBeUndefined();
+    }
+  });
+
   it('deduplicates concurrent identical requests', async () => {
     const mockFetch = vi.mocked(fetch);
     let resolveFn!: (v: Response) => void;

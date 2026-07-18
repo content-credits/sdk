@@ -198,6 +198,130 @@ describe('paywall renderer', () => {
     expect(shadowRoot.querySelector('.cc-state-detail')!.textContent)
       .toBe('Too many attempts. Please wait a few minutes and try again.');
   });
+
+  // ── Phase 3 structural polish (CONSUMER_MESSAGING_AUDIT_2026-07.md Part 4/5) ──
+
+  describe('accessibility wiring', () => {
+    it('sets aria-busy on the button and puts the loading label in an aria-live region', () => {
+      const renderer = createPaywallRenderer(config as any);
+      renderer.render('login', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      const button = shadowRoot.querySelector<HTMLButtonElement>('.cc-btn')!;
+
+      renderer.render('loading', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+      renderer.setButtonLoading(true);
+
+      expect(button.getAttribute('aria-busy')).toBe('true');
+      const liveRegion = button.querySelector('[aria-live="polite"]');
+      expect(liveRegion).not.toBeNull();
+      expect(liveRegion!.textContent).toContain('Signing in…');
+    });
+
+    it('announces the button-specific loading label ("Unlocking…") via the live region', () => {
+      const renderer = createPaywallRenderer(config as any);
+      renderer.render('purchase', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 2 });
+      renderer.render('loading', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+      renderer.setButtonLoading(true);
+
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      const button = shadowRoot.querySelector<HTMLButtonElement>('.cc-btn')!;
+      expect(button.getAttribute('aria-busy')).toBe('true');
+      expect(button.querySelector('[aria-live="polite"]')!.textContent).toContain('Unlocking…');
+    });
+
+    it('puts the inline purchase-failure error line in an aria-live="polite" element', () => {
+      const renderer = createPaywallRenderer(config as any);
+      renderer.render(
+        'purchase',
+        { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() },
+        { requiredCredits: 3, error: "Something went wrong and your article wasn't unlocked. Please try again." }
+      );
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      const errorEl = shadowRoot.querySelector('.cc-error')!;
+      expect(errorEl.getAttribute('aria-live')).toBe('polite');
+    });
+
+    it('puts the error-state detail line in an aria-live="polite" element', () => {
+      const renderer = createPaywallRenderer(config as any);
+      renderer.render(
+        'error',
+        { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn(), onRetry: vi.fn() },
+        { error: "We couldn't check your access to this article. Please try again." }
+      );
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      const detail = shadowRoot.querySelector('.cc-state-detail')!;
+      expect(detail.getAttribute('aria-live')).toBe('polite');
+    });
+  });
+
+  describe('paywallCopy overrides (Phase 3 configurable copy)', () => {
+    it('overrides the login-state sign-in button label via signInButtonLabel', () => {
+      const renderer = createPaywallRenderer({
+        ...config,
+        paywallCopy: { signInButtonLabel: 'Log in to keep reading' },
+      } as any);
+      renderer.render('login', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-btn')!.textContent).toBe('Log in to keep reading');
+    });
+
+    it('defaults the sign-in button label to "Sign in to read" when unset', () => {
+      const renderer = createPaywallRenderer(config as any);
+      renderer.render('login', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-btn')!.textContent).toBe('Sign in to read');
+    });
+
+    it('overrides the insufficient-state buy-credits button label via buyCreditsButtonLabel', () => {
+      const renderer = createPaywallRenderer({
+        ...config,
+        paywallCopy: { buyCreditsButtonLabel: 'Top up now' },
+      } as any);
+      renderer.render('insufficient', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 4, creditBalance: 1 });
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-btn')!.textContent).toBe('Top up now');
+    });
+
+    it('defaults the buy-credits button label to "Buy credits" when unset', () => {
+      const renderer = createPaywallRenderer(config as any);
+      renderer.render('insufficient', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 4, creditBalance: 1 });
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-btn')!.textContent).toBe('Buy credits');
+    });
+
+    it('overrides the insufficient-state detail line via insufficientDetail, taking precedence over the cost line', () => {
+      const renderer = createPaywallRenderer({
+        ...config,
+        paywallCopy: { insufficientDetail: 'You need more credits to keep reading.' },
+      } as any);
+      renderer.render('insufficient', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 4, creditBalance: 1 });
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-state-detail')!.textContent).toBe('You need more credits to keep reading.');
+    });
+
+    it('overrides the insufficient-state fallback detail (no price known) via insufficientDetail', () => {
+      const renderer = createPaywallRenderer({
+        ...config,
+        paywallCopy: { insufficientDetail: 'You need more credits to keep reading.' },
+      } as any);
+      renderer.render('insufficient', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+      const shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-state-detail')!.textContent).toBe('You need more credits to keep reading.');
+    });
+
+    it('falls back to the cost line / static fallback for insufficientDetail when unset', () => {
+      const renderer = createPaywallRenderer(config as any);
+      renderer.render('insufficient', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() }, { requiredCredits: 4, creditBalance: 1 });
+      let shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-state-detail')!.textContent).toBe('This article costs 4 credits — you have 1.');
+
+      renderer.render('insufficient', { onLogin: vi.fn(), onPurchase: vi.fn(), onBuyMoreCredits: vi.fn() });
+      shadowRoot = document.getElementById('cc-paywall-host')!.shadowRoot!;
+      expect(shadowRoot.querySelector('.cc-state-detail')!.textContent)
+        .toBe("You don't have enough credits to unlock this article.");
+    });
+  });
 });
 
 describe('comment widget', () => {

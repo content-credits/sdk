@@ -222,7 +222,7 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       parent.appendChild(detail);
     }
 
-    const btn = el('button', 'Sign in to read');
+    const btn = el('button', config.paywallCopy?.signInButtonLabel ?? 'Sign in to read');
     btn.className = 'cc-btn cc-btn-sdk';
     btn.dataset.ccAction = 'login';
     btn.addEventListener('click', () => { void cb.onLogin(); });
@@ -270,9 +270,12 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     // Inline failure feedback for a failed purchase attempt (a paying user must
     // never see a silent revert to this same state with no explanation). Sits
     // above the button so it's the last thing read before retrying.
+    // aria-live="polite" so screen reader users are told about the failure
+    // without it interrupting whatever they're currently focused on.
     if (errorMessage) {
       const errorEl = el('p', errorMessage);
       errorEl.className = 'cc-error';
+      errorEl.setAttribute('aria-live', 'polite');
       parent.appendChild(errorEl);
     }
 
@@ -306,14 +309,16 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
     const detail = el('p');
     detail.className = 'cc-state-detail';
-    if (required !== null && available !== null) {
-      detail.textContent = costLine(required, available);
-    } else {
-      detail.textContent = "You don't have enough credits to unlock this article.";
-    }
+    // Publisher-supplied copy always wins (mirrors purchaseDetail's precedence);
+    // otherwise show the concrete cost/balance line when both are known, else
+    // the static fallback.
+    detail.textContent = config.paywallCopy?.insufficientDetail
+      ?? (required !== null && available !== null
+        ? costLine(required, available)
+        : "You don't have enough credits to unlock this article.");
     parent.appendChild(detail);
 
-    const btn = el('button', 'Buy credits');
+    const btn = el('button', config.paywallCopy?.buyCreditsButtonLabel ?? 'Buy credits');
     btn.className = 'cc-btn cc-btn-sdk';
     btn.addEventListener('click', () => cb.onBuyMoreCredits());
     parent.appendChild(btn);
@@ -331,6 +336,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
 
     const detail = el('p', message ?? "We couldn't check your access to this article. Please try again.");
     detail.className = 'cc-state-detail';
+    // aria-live so a screen reader announces the failure without requiring
+    // focus to already be on this element.
+    detail.setAttribute('aria-live', 'polite');
     parent.appendChild(detail);
 
     const btn = el('button', 'Try again');
@@ -362,6 +370,10 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     if (!btn) return;
 
     btn.disabled = loading;
+    // aria-busy tells assistive tech the button's action is in flight;
+    // paired with the aria-live label span below so the "Signing in…" /
+    // "Unlocking…" status is actually announced, not just visually shown.
+    btn.setAttribute('aria-busy', loading ? 'true' : 'false');
 
     if (loading) {
       // Replace button content with spinner + label, preserving button size.
@@ -376,9 +388,12 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
           : 'Processing…';
       const spinner = el('span');
       spinner.className = 'cc-spinner';
+      spinner.setAttribute('aria-hidden', 'true');
       setTextContent(btn, '');
       btn.appendChild(spinner);
-      btn.appendChild(document.createTextNode(` ${loadingLabel}`));
+      const statusLabel = el('span', ` ${loadingLabel}`);
+      statusLabel.setAttribute('aria-live', 'polite');
+      btn.appendChild(statusLabel);
     }
   }
 

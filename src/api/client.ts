@@ -90,8 +90,9 @@ export function createApiClient(baseUrl: string, emitter: EventEmitter): ApiClie
         }
 
         if (!response.ok) {
-          const msg = (data as { message?: string })?.message ?? `HTTP ${response.status}`;
-          throw new ApiError(response.status, msg, data);
+          const body = data as { message?: string; code?: string };
+          const msg = body?.message ?? `HTTP ${response.status}`;
+          throw new ApiError(response.status, msg, data, body?.code);
         }
 
         return data as T;
@@ -134,7 +135,14 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    public readonly data?: unknown
+    public readonly data?: unknown,
+    /**
+     * Machine-readable error code (e.g. `INSUFFICIENT_CREDITS`, `RATE_LIMITED`),
+     * parsed from the response body's `code` field when the backend supplies
+     * one. Optional — older/undeployed backend versions omit it, so callers
+     * must fall back to `status` checks (see `src/paywall/index.ts`).
+     */
+    public readonly code?: string
   ) {
     super(message);
     this.name = 'ApiError';
