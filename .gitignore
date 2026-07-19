@@ -13,3 +13,6 @@ docs-site/node_modules/
 .DS_Store
 Thumbs.db
 .conductor/settings.local.toml
+.claude/settings.local.json
+.claude/worktrees/
+.context/

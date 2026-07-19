@@ -1,0 +1,5 @@
+# CODEOWNERS — server-side review gate (2026-06 secrets-exfil incident; ADR-0009 in the docs repo's adr/).
+# CI workflow files are a privileged, secrets-adjacent surface: any change under .github/
+# (workflows AND this file itself) requires owner review before merge.
+# NOTE: only enforced once branch protection on main enables "Require review from Code Owners".
+/.github/ @patelkathan
