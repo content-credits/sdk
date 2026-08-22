@@ -102,4 +102,21 @@ describe('ContentCredits', () => {
       hasAccess: false,
     }));
   });
+
+  it('fails closed: a blank apiKey hides premium content before throwing (B3)', () => {
+    document.body.innerHTML =
+      '<article class="cc-premium-content"><p>p1</p><p>p2</p><p>p3</p><p>p4</p></article>';
+    const ps = () =>
+      Array.from(document.querySelectorAll('.cc-premium-content > p')) as HTMLElement[];
+
+    // A missing apiKey is a loud misconfiguration — init still throws…
+    expect(() => ContentCredits.init({ apiKey: '' } as any)).toThrow();
+
+    // …but the premium content must NOT be left exposed: the paragraphs past
+    // the teaser are hidden (fail closed). Teaser visibility itself depends on
+    // the gate's correct boundary behaviour, which gate.test.ts covers.
+    const p = ps();
+    expect(p[2].style.display).toBe('none');
+    expect(p[3].style.display).toBe('none');
+  });
 });

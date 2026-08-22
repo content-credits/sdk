@@ -41,6 +41,27 @@ export type { User, Comment, CommentSortBy } from './types/index.js';
 
 declare const __VERSION__: string;
 
+/**
+ * Fail-closed content hide (B3). resolveConfig() throws on a missing/blank
+ * apiKey BEFORE the paywall gate ever runs, which would leave premium content
+ * fully exposed. When init() catches that error it calls this first, so the
+ * premium content is hidden with safe defaults before the error is re-thrown.
+ * Best-effort and defensive — it must never mask the original config error.
+ */
+function hideContentFailClosed(rawConfig: SDKConfig): void {
+  try {
+    if (rawConfig?.headless) return; // headless: the host app owns the DOM
+    const gate = createGate({
+      selector: rawConfig?.contentSelector ?? '.cc-premium-content',
+      teaserParagraphs: rawConfig?.teaserParagraphs ?? 2,
+      paywallMode: rawConfig?.paywallMode ?? 'overlay',
+    });
+    gate.hide();
+  } catch {
+    // swallow — never replace the real configuration error with a gate error
+  }
+}
+
 export class ContentCredits {
   private readonly state = createState();
   private readonly emitter = createEventEmitter();
@@ -70,7 +91,16 @@ export class ContentCredits {
    * });
    */
   static init(rawConfig: SDKConfig): ContentCredits {
-    const config = resolveConfig(rawConfig);
+    let config: ReturnType<typeof resolveConfig>;
+    try {
+      config = resolveConfig(rawConfig);
+    } catch (err) {
+      // Fail CLOSED (B3): a config error such as a missing/blank apiKey must
+      // never leave premium content exposed. Hide it synchronously with safe
+      // defaults before re-surfacing the error to the publisher console.
+      hideContentFailClosed(rawConfig);
+      throw err;
+    }
     const instance = new ContentCredits(config);
     void instance._start();
     return instance;
