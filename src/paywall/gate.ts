@@ -46,7 +46,16 @@ export function createGate(options: GateOptions): Gate {
     if (paragraphs.length > options.teaserParagraphs) {
       const hideFrom = paragraphs[options.teaserParagraphs];
       const childNodes = Array.from(contentEl.childNodes);
-      const pivotIndex = childNodes.findIndex(n => n === hideFrom || contentEl!.contains(n as Node) && n.compareDocumentPosition(hideFrom) & Node.DOCUMENT_POSITION_FOLLOWING);
+      // Find the direct child that IS, or CONTAINS, the first paragraph past the
+      // teaser threshold — that's where hiding begins. `hideFrom` may be nested
+      // (e.g. a <p> inside a wrapper div), so we can't rely on identity alone.
+      // NOTE: this previously used compareDocumentPosition & DOCUMENT_POSITION_FOLLOWING,
+      // which matches the FIRST child that precedes hideFrom — always index 0 —
+      // so the entire article was hidden and the teaser never showed (the paywall
+      // appeared immediately regardless of teaserParagraphs).
+      const pivotIndex = childNodes.findIndex(
+        n => n === hideFrom || (n.nodeType === Node.ELEMENT_NODE && (n as Element).contains(hideFrom)),
+      );
 
       hiddenNodes = childNodes.slice(pivotIndex < 0 ? options.teaserParagraphs : pivotIndex);
       hiddenNodes.forEach(n => {
