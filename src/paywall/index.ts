@@ -3,16 +3,14 @@ import type { Gate } from './gate.js';
 import { createPaywallRenderer, type PaywallRenderer } from './renderer.js';
 import { detectExtension } from '../extension/detector.js';
 import { createExtensionBridge } from '../extension/bridge.js';
-import { isMobileDevice } from '../auth/popup.js';
-import { login as oauthLogin } from '../auth/oauth.js';
+import { isMobileDevice, openCenteredPopup } from '../auth/popup.js';
+import { login as oauthLogin, accountsOrigin } from '../auth/oauth.js';
 import { tokenStorage } from '../auth/storage.js';
 import { ApiError } from '../api/client.js';
 import type { createCreditsApi } from '../api/credits.js';
 import type { StateStore } from '../core/state.js';
 import type { EventEmitter } from '../core/events.js';
 import type { ResolvedConfig, AuthorizationResponseData } from '../types/index.js';
-
-declare const __ACCOUNTS_URL__: string;
 
 // How long to wait for the extension to respond to an authorization request
 // before falling back to the direct API check. MV3 service workers can take
@@ -37,6 +35,21 @@ function isRateLimitedError(err: unknown): boolean {
   if (!(err instanceof ApiError)) return false;
   if (err.code) return err.code === 'RATE_LIMITED';
   return err.status === 429;
+}
+
+interface CreditsPurchasedMessage {
+  type: string;
+  orderId?: string;
+  creditsAdded?: number;
+  creditBalance?: number | null;
+}
+
+function isCreditsPurchasedMessage(data: unknown): data is CreditsPurchasedMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { type?: unknown }).type === 'cc:credits_purchased'
+  );
 }
 
 export interface PaywallModule {
@@ -185,8 +198,52 @@ export function createPaywall(
     }
   }
 
+  let creditsPurchasedListener: ((event: MessageEvent) => void) | null = null;
+
+  function removeCreditsPurchasedListener(): void {
+    if (creditsPurchasedListener) {
+      window.removeEventListener('message', creditsPurchasedListener);
+      creditsPurchasedListener = null;
+    }
+  }
+
+  function handleCreditsPurchased(event: MessageEvent): void {
+    if (event.origin !== accountsOrigin(config)) return;
+    if (!isCreditsPurchasedMessage(event.data)) return;
+
+    removeCreditsPurchasedListener();
+
+    const creditsAdded = typeof event.data.creditsAdded === 'number' ? event.data.creditsAdded : 0;
+    const creditBalance = typeof event.data.creditBalance === 'number' ? event.data.creditBalance : null;
+
+    // onCreditsPurchased is emitter-wired in ContentCredits._start() (same
+    // convention as onPurchased) — emitting here reaches it exactly once.
+    emitter.emit('credits:purchased', { creditsAdded, creditBalance });
+
+    void checkAccess();
+  }
+
   function doBuyMoreCredits(): void {
-    window.open(`${__ACCOUNTS_URL__}/consumer/dashboard`, '_blank', 'noopener,noreferrer');
+    removeCreditsPurchasedListener();
+    creditsPurchasedListener = handleCreditsPurchased;
+    window.addEventListener('message', creditsPurchasedListener);
+
+    const url = new URL('/quick-checkout', config.accountsUrl);
+    url.searchParams.set('origin', window.location.origin);
+    url.searchParams.set('reason', 'insufficient');
+    const requiredCredits = state.get().requiredCredits;
+    if (requiredCredits !== null && requiredCredits !== undefined) {
+      url.searchParams.set('required', String(requiredCredits));
+    }
+
+    const popup = openCenteredPopup(url.toString(), { name: 'ccQuickCheckout', width: 480, height: 640 });
+    if (!popup) {
+      // The fallback tab is opened with noopener, so no completion message can
+      // ever arrive — don't leave the listener dangling.
+      removeCreditsPurchasedListener();
+      const fallbackUrl = new URL('/consumer/buy-credits', config.accountsUrl);
+      window.open(fallbackUrl.toString(), '_blank', 'noopener,noreferrer');
+    }
   }
 
   // ── Extension auth response handler ──────────────────────────────────────
@@ -350,6 +407,23 @@ export function createPaywall(
         state.set({ isLoading: false, isLoaded: true, hasAccess: data.doesHaveAccess });
         if (data.doesHaveAccess) {
           handleAccessGranted(data.creditsSpent ?? 0, data.creditBalance ?? 0);
+        } else if (data.code === 'INSUFFICIENT_CREDITS' || data.status === 402) {
+          // Same precedence rule as the direct-API path: insufficient credits
+          // must render its dedicated state, not the generic error line.
+          state.set({
+            requiredCredits: data.requiredCredits ?? state.get().requiredCredits,
+            creditBalance: data.creditBalance ?? state.get().creditBalance,
+          });
+          if (!config.headless) {
+            renderer.render('insufficient', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+              requiredCredits: state.get().requiredCredits,
+              creditBalance: state.get().creditBalance,
+            });
+          }
+          const required = state.get().requiredCredits ?? 0;
+          const available = state.get().creditBalance ?? 0;
+          config.onInsufficientCredits?.({ required, available });
+          emitter.emit('credits:insufficient', { required, available });
         } else {
           renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
             error: config.paywallCopy?.errorText ?? "Something went wrong and your article wasn't unlocked. Please try again.",
@@ -363,6 +437,7 @@ export function createPaywall(
   }
 
   function destroy(): void {
+    removeCreditsPurchasedListener();
     bridge.detach();
     if (!config.headless) {
       renderer.destroy();

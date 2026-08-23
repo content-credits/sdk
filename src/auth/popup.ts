@@ -1,12 +1,17 @@
-const POPUP_NAME = 'ccAuthPopup';
-const POPUP_SPECS = 'scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=600,height=650';
+const DEFAULT_POPUP_NAME = 'ccAuthPopup';
+const DEFAULT_WIDTH = 600;
+const DEFAULT_HEIGHT = 650;
 
-function centeredSpecs(): string {
-  const width = 600;
-  const height = 650;
+export interface PopupOptions {
+  name?: string;
+  width?: number;
+  height?: number;
+}
+
+function centeredSpecs(width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT): string {
   const left = Math.round(window.screenX + (window.outerWidth - width) / 2);
   const top = Math.round(window.screenY + (window.outerHeight - height) / 2);
-  return `${POPUP_SPECS},left=${left},top=${top}`;
+  return `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=${width},height=${height},left=${left},top=${top}`;
 }
 
 export function isMobileDevice(): boolean {
@@ -34,10 +39,14 @@ export function isMobileDevice(): boolean {
 }
 
 /** Open a centered popup window. Returns null if it was blocked. */
-export function openCenteredPopup(url: string): Window | null {
+export function openCenteredPopup(url: string, options?: PopupOptions): Window | null {
+  const width = options?.width ?? DEFAULT_WIDTH;
+  const h = options?.height ?? DEFAULT_HEIGHT;
+  const popupName = options?.name ?? DEFAULT_POPUP_NAME;
+
   let popup: Window | null = null;
   try {
-    popup = window.open(url, POPUP_NAME, centeredSpecs());
+    popup = window.open(url, popupName, centeredSpecs(width, h));
   } catch {
     return null;
   }

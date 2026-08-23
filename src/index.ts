@@ -119,6 +119,9 @@ export class ContentCredits {
     if (this.config.onPurchased) {
       this.emitter.on('article:purchased', (payload) => this.config.onPurchased!(payload));
     }
+    if (this.config.onCreditsPurchased) {
+      this.emitter.on('credits:purchased', (payload) => this.config.onCreditsPurchased!(payload));
+    }
     if (this.config.onUserLogin) {
       this.emitter.on('auth:login', ({ user }) => this.config.onUserLogin!(user));
     }

@@ -57,6 +57,7 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     onLoginRequired: raw.onLoginRequired,
     onPurchaseRequired: raw.onPurchaseRequired,
     onInsufficientCredits: raw.onInsufficientCredits,
+    onCreditsPurchased: raw.onCreditsPurchased,
     onPurchased: raw.onPurchased,
     onUserLogin: raw.onUserLogin,
     onUserLogout: raw.onUserLogout,
