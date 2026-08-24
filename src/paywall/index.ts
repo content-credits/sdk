@@ -200,10 +200,28 @@ export function createPaywall(
 
   let creditsPurchasedListener: ((event: MessageEvent) => void) | null = null;
 
-  function removeCreditsPurchasedListener(): void {
+  // The checkout window we are currently waiting on. Used to decide when the
+  // focus/visibility fallback has done its last useful recheck.
+  let checkoutWindow: Window | null = null;
+  let lastFallbackRecheckAt = 0;
+  let focusListener: (() => void) | null = null;
+  let visibilityChangeListener: (() => void) | null = null;
+
+  function removeCreditsPurchasedListeners(): void {
+    checkoutWindow = null;
     if (creditsPurchasedListener) {
       window.removeEventListener('message', creditsPurchasedListener);
       creditsPurchasedListener = null;
+    }
+    if (focusListener) {
+      window.removeEventListener('focus', focusListener);
+      focusListener = null;
+    }
+    if (visibilityChangeListener) {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', visibilityChangeListener);
+      }
+      visibilityChangeListener = null;
     }
   }
 
@@ -211,7 +229,7 @@ export function createPaywall(
     if (event.origin !== accountsOrigin(config)) return;
     if (!isCreditsPurchasedMessage(event.data)) return;
 
-    removeCreditsPurchasedListener();
+    removeCreditsPurchasedListeners();
 
     const creditsAdded = typeof event.data.creditsAdded === 'number' ? event.data.creditsAdded : 0;
     const creditBalance = typeof event.data.creditBalance === 'number' ? event.data.creditBalance : null;
@@ -223,12 +241,56 @@ export function createPaywall(
     void checkAccess();
   }
 
-  function doBuyMoreCredits(): void {
-    removeCreditsPurchasedListener();
-    creditsPurchasedListener = handleCreditsPurchased;
-    window.addEventListener('message', creditsPurchasedListener);
+  /**
+   * Fallback recovery for when the completion message never arrives. COOP can
+   * sever window.opener — and a severed checkout window never auto-closes, so
+   * the reader comes back to the article with it still open. That case is
+   * exactly why this fallback exists, so an open window must still recheck.
+   *
+   * Bounded two ways, because rechecking on every focus would put an unbounded
+   * number of /access calls behind ordinary tab switching — which is how the
+   * 2026-07 authorize incident starved the rate limiter:
+   *   1. debounced, so rapid focus/visibility churn collapses to one call;
+   *   2. once the checkout window is gone there is nothing left to wait for,
+   *      so that recheck is the last one and the listeners stand down.
+   */
+  const FALLBACK_RECHECK_MIN_INTERVAL_MS = 2000;
 
-    const url = new URL('/quick-checkout', config.accountsUrl);
+  function recheckAfterCheckout(): void {
+    const now = Date.now();
+    if (now - lastFallbackRecheckAt < FALLBACK_RECHECK_MIN_INTERVAL_MS) return;
+    lastFallbackRecheckAt = now;
+
+    const checkoutFinished = !checkoutWindow || checkoutWindow.closed;
+    void checkAccess();
+    if (checkoutFinished) removeCreditsPurchasedListeners();
+  }
+
+  function handleFocus(): void {
+    recheckAfterCheckout();
+  }
+
+  function handleVisibilityChange(): void {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible' || !document.visibilityState) {
+      recheckAfterCheckout();
+    }
+  }
+
+  function doBuyMoreCredits(): void {
+    removeCreditsPurchasedListeners();
+    lastFallbackRecheckAt = 0;
+
+    creditsPurchasedListener = handleCreditsPurchased;
+    focusListener = handleFocus;
+    visibilityChangeListener = handleVisibilityChange;
+
+    window.addEventListener('message', creditsPurchasedListener);
+    window.addEventListener('focus', focusListener);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', visibilityChangeListener);
+    }
+
+    const url = new URL('/checkout', config.accountsUrl);
     url.searchParams.set('origin', window.location.origin);
     url.searchParams.set('reason', 'insufficient');
     const requiredCredits = state.get().requiredCredits;
@@ -236,11 +298,12 @@ export function createPaywall(
       url.searchParams.set('required', String(requiredCredits));
     }
 
-    const popup = openCenteredPopup(url.toString(), { name: 'ccQuickCheckout', width: 480, height: 640 });
+    const popup = openCenteredPopup(url.toString(), { name: 'ccCheckout', width: 480, height: 640 });
+    checkoutWindow = popup;
     if (!popup) {
       // The fallback tab is opened with noopener, so no completion message can
       // ever arrive — don't leave the listener dangling.
-      removeCreditsPurchasedListener();
+      removeCreditsPurchasedListeners();
       const fallbackUrl = new URL('/consumer/buy-credits', config.accountsUrl);
       window.open(fallbackUrl.toString(), '_blank', 'noopener,noreferrer');
     }
@@ -437,7 +500,7 @@ export function createPaywall(
   }
 
   function destroy(): void {
-    removeCreditsPurchasedListener();
+    removeCreditsPurchasedListeners();
     bridge.detach();
     if (!config.headless) {
       renderer.destroy();

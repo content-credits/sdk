@@ -334,7 +334,7 @@ export interface SDKConfig {
   onInsufficientCredits?: (info: { required: number; available: number }) => void;
 
   /**
-   * Called after a successful credit purchase via the quick-checkout popup.
+   * Called after a successful credit purchase via the checkout popup.
    * Equivalent to listening for the `credits:purchased` event.
    */
   onCreditsPurchased?: (info: { creditsAdded: number; creditBalance: number | null }) => void;

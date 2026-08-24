@@ -679,9 +679,9 @@ describe('paywall flow', () => {
     expect(creditsApi.checkAccess).toHaveBeenCalledTimes(2);
   });
 
-  // ── Wallet quick-checkout (feat/wallet-quick-checkout) ─────────────────────
+  // ── Wallet checkout ───────────────────────────────────────────────────────
 
-  describe('wallet quick-checkout', () => {
+  describe('wallet checkout', () => {
     it('opens a centered popup (480x640) with origin, reason=insufficient, and required credits when known', async () => {
       const state = createState();
       const emitter = createEventEmitter();
@@ -714,11 +714,11 @@ describe('paywall flow', () => {
 
       expect(openCenteredPopup).toHaveBeenCalledTimes(1);
       const [popupUrl, popupOptions] = vi.mocked(openCenteredPopup).mock.calls[0];
-      expect(popupOptions).toEqual({ name: 'ccQuickCheckout', width: 480, height: 640 });
+      expect(popupOptions).toEqual({ name: 'ccCheckout', width: 480, height: 640 });
 
       const parsedUrl = new URL(popupUrl);
       expect(parsedUrl.origin).toBe('https://accounts.contentcredits.com');
-      expect(parsedUrl.pathname).toBe('/quick-checkout');
+      expect(parsedUrl.pathname).toBe('/checkout');
       expect(parsedUrl.searchParams.get('origin')).toBe(window.location.origin);
       expect(parsedUrl.searchParams.get('reason')).toBe('insufficient');
       expect(parsedUrl.searchParams.get('required')).toBe('5');
@@ -905,7 +905,97 @@ describe('paywall flow', () => {
       });
     });
 
-    it('unregisters the message listener after a valid completion message is received', async () => {
+    it('refreshes credit state on focus while purchase listener is armed', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({
+          success: false,
+          requiredCredits: 5,
+          creditBalance: 10,
+        }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      tokenPresent = true;
+      await module.init();
+
+      module.buyMoreCredits();
+      creditsApi.checkAccess.mockClear();
+
+      creditsApi.checkAccess.mockResolvedValueOnce({
+        success: false,
+        requiredCredits: 5,
+        creditBalance: 60,
+      });
+
+      window.dispatchEvent(new Event('focus'));
+
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(state.get().creditBalance).toBe(60);
+      });
+    });
+
+    it('refreshes credit state on visibilitychange when document becomes visible while purchase listener is armed', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({
+          success: false,
+          requiredCredits: 5,
+          creditBalance: 10,
+        }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      tokenPresent = true;
+      await module.init();
+
+      module.buyMoreCredits();
+      creditsApi.checkAccess.mockClear();
+
+      // Hidden tab should NOT trigger recheck
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+
+      // Visible tab should trigger recheck
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      creditsApi.checkAccess.mockResolvedValueOnce({
+        success: false,
+        requiredCredits: 5,
+        creditBalance: 75,
+      });
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(state.get().creditBalance).toBe(75);
+      });
+    });
+
+    it('unregisters message, focus, and visibilitychange listeners after a valid completion message is received', async () => {
       const state = createState();
       const emitter = createEventEmitter();
       const purchasedEvent = vi.fn();
@@ -942,9 +1032,15 @@ describe('paywall flow', () => {
       }));
 
       expect(purchasedEvent).toHaveBeenCalledTimes(1);
+
+      // Focus and visibilitychange should no longer trigger checkAccess
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
     });
 
-    it('cleans up the message listener when destroy() is called', async () => {
+    it('cleans up message, focus, and visibilitychange listeners when destroy() is called', async () => {
       const state = createState();
       const emitter = createEventEmitter();
       const purchasedEvent = vi.fn();
@@ -973,6 +1069,11 @@ describe('paywall flow', () => {
       }));
 
       expect(purchasedEvent).not.toHaveBeenCalled();
+
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
     });
 
     it('renders the insufficient state when an extension-delegated purchase reports INSUFFICIENT_CREDITS', async () => {

@@ -148,8 +148,8 @@ describe('openCenteredPopup', () => {
     Object.defineProperty(window, 'outerWidth', { value: 1000, configurable: true });
     Object.defineProperty(window, 'outerHeight', { value: 800, configurable: true });
 
-    const result = openCenteredPopup('https://accounts.example.com/quick-checkout', {
-      name: 'ccQuickCheckout',
+    const result = openCenteredPopup('https://accounts.example.com/checkout', {
+      name: 'ccCheckout',
       width: 480,
       height: 640,
     });
@@ -158,8 +158,8 @@ describe('openCenteredPopup', () => {
     // left = 0 + (1000 - 480) / 2 = 260
     // top = 0 + (800 - 640) / 2 = 80
     expect(openSpy).toHaveBeenCalledWith(
-      'https://accounts.example.com/quick-checkout',
-      'ccQuickCheckout',
+      'https://accounts.example.com/checkout',
+      'ccCheckout',
       'scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=480,height=640,left=260,top=80'
     );
 
