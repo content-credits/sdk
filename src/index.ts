@@ -236,8 +236,9 @@ export class ContentCredits {
   }
 
   /**
-   * Open the Content Credits dashboard in a new tab so the user can top up
-   * their credit balance.
+   * Opens the Buy Credits checkout in a 480x640 popup window so the user can
+   * add credits to their balance (falls back to opening it in a new tab if
+   * the popup is blocked).
    *
    * Primarily useful in **headless mode** when `state.creditBalance` is lower
    * than `state.requiredCredits`.

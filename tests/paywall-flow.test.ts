@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createPaywall } from '../src/paywall/index';
 import { createState } from '../src/core/state';
 import { createEventEmitter } from '../src/core/events';
@@ -1159,6 +1159,205 @@ describe('paywall flow', () => {
         expect.any(Object)
       );
       expect(errorEvent).toHaveBeenCalledWith({ message: 'Purchase failed via extension' });
+    });
+  });
+
+  // ── Wallet checkout fallback recovery (regressions for S1/S3/S4/S2) ────────
+  //
+  // The tests above all mock the popup as `{ closed: false }`, so they never
+  // exercise the COOP-severed case, the trailing-edge debounce, or the
+  // listener split on a blocked popup. These tests target those paths
+  // specifically — each is written to fail if the corresponding fix is
+  // reverted (see the inline notes on what the old behaviour would do).
+
+  describe('wallet checkout fallback recovery', () => {
+    beforeEach(() => {
+      // These tests exercise checkAccess() via the focus/visibility fallback,
+      // which short-circuits to the login state (never reaching creditsApi)
+      // when no token is present.
+      tokenPresent = true;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('stands the fallback down once checkAccess reports access granted, not because the popup looks closed', async () => {
+      vi.useFakeTimers();
+      const state = createState();
+      const emitter = createEventEmitter();
+      // Popup handle still reports open. The reverted code decided whether to
+      // stand down purely from `checkoutWindow.closed`, so with `closed:
+      // false` it would keep the fallback armed forever even after access is
+      // granted — wasteful, and the opposite failure mode from S1.
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false, close: vi.fn() } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: true }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      expect(state.get().hasAccess).toBe(true);
+
+      // Past the debounce window, with access already granted: the fallback
+      // must have stood down, so a further focus event calls nothing.
+      await vi.advanceTimersByTimeAsync(2100);
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+    });
+
+    it('keeps the fallback armed when a COOP-severed popup reports closed=true immediately but the purchase has not happened', async () => {
+      vi.useFakeTimers();
+      const state = createState();
+      const emitter = createEventEmitter();
+      // This is the COOP scenario S1 exists for: window.opener is severed and
+      // `.closed` reads true right away even though the popup is still open
+      // and the reader is mid-payment. The old code read this as "checkout
+      // finished" and stood the fallback down on the very first recheck —
+      // exactly when it was the only recovery path left.
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: true, close: vi.fn() } as any);
+
+      const creditsApi = {
+        // Never grants access — the purchase genuinely has not completed.
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      expect(state.get().hasAccess).toBe(false);
+
+      // A second real focus event, well past the debounce window, must still
+      // produce a recheck — the old code would have already torn the
+      // listener down after the first event above.
+      await vi.advanceTimersByTimeAsync(2100);
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+    });
+
+    it('defers a focus event suppressed by the debounce window instead of dropping it', async () => {
+      vi.useFakeTimers();
+      const state = createState();
+      const emitter = createEventEmitter();
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false, close: vi.fn() } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      // Leading-edge recheck.
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      creditsApi.checkAccess.mockClear();
+
+      // A second focus event arrives well inside the 2s debounce window.
+      await vi.advanceTimersByTimeAsync(200);
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      // Not dropped, but not fired immediately either — it's deferred.
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+
+      // Once the debounce window elapses, the deferred call fires on its own
+      // with no further user gesture. The reverted (leading-edge-only) code
+      // would silently drop the suppressed event and never call again here.
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes only the message listener when the popup is blocked, leaving focus/visibility recovery armed', () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const purchasedEvent = vi.fn();
+      emitter.on('credits:purchased', purchasedEvent);
+      vi.mocked(openCenteredPopup).mockReturnValue(null);
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      // With the popup blocked, the fallback tab opens `noopener` — no
+      // completion message could ever legitimately arrive. Prove the message
+      // listener itself was actually torn down, not just unreachable.
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://accounts.contentcredits.com',
+        data: { type: 'cc:credits_purchased', creditsAdded: 10, creditBalance: 10 },
+      }));
+      expect(purchasedEvent).not.toHaveBeenCalled();
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+
+      // Focus/visibility recovery must still be armed — with no popup handle
+      // at all, it's the only possible completion signal left. The reverted
+      // code called removeCreditsPurchasedListeners() (all three listeners)
+      // on a blocked popup, so this would never fire.
+      window.dispatchEvent(new Event('focus'));
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+
+      openSpy.mockRestore();
+    });
+
+    it('renders insufficient (not purchase) from checkAccess when the balance is already known to be below the price', async () => {
+      tokenPresent = true;
+      const state = createState();
+      const emitter = createEventEmitter();
+      const onPurchaseRequired = vi.fn();
+      const onInsufficientCredits = vi.fn();
+      const insufficientEvent = vi.fn();
+      emitter.on('credits:insufficient', insufficientEvent);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 2 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig({ onPurchaseRequired, onInsufficientCredits }) as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      await module.init();
+
+      // The reverted code always rendered 'purchase' here and always called
+      // onPurchaseRequired, regardless of the known balance vs. price.
+      expect(rendererApi.render).toHaveBeenCalledWith(
+        'insufficient',
+        expect.any(Object),
+        { requiredCredits: 5, creditBalance: 2 }
+      );
+      expect(onInsufficientCredits).toHaveBeenCalledWith({ required: 5, available: 2 });
+      expect(insufficientEvent).toHaveBeenCalledWith({ required: 5, available: 2 });
+      expect(onPurchaseRequired).not.toHaveBeenCalled();
+      expect(rendererApi.render).not.toHaveBeenCalledWith(
+        'purchase',
+        expect.any(Object),
+        expect.any(Object)
+      );
     });
   });
 });
