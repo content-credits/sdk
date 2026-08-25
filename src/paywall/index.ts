@@ -3,16 +3,14 @@ import type { Gate } from './gate.js';
 import { createPaywallRenderer, type PaywallRenderer } from './renderer.js';
 import { detectExtension } from '../extension/detector.js';
 import { createExtensionBridge } from '../extension/bridge.js';
-import { isMobileDevice } from '../auth/popup.js';
-import { login as oauthLogin } from '../auth/oauth.js';
+import { isMobileDevice, openCenteredPopup } from '../auth/popup.js';
+import { login as oauthLogin, accountsOrigin } from '../auth/oauth.js';
 import { tokenStorage } from '../auth/storage.js';
 import { ApiError } from '../api/client.js';
 import type { createCreditsApi } from '../api/credits.js';
 import type { StateStore } from '../core/state.js';
 import type { EventEmitter } from '../core/events.js';
 import type { ResolvedConfig, AuthorizationResponseData } from '../types/index.js';
-
-declare const __ACCOUNTS_URL__: string;
 
 // How long to wait for the extension to respond to an authorization request
 // before falling back to the direct API check. MV3 service workers can take
@@ -37,6 +35,21 @@ function isRateLimitedError(err: unknown): boolean {
   if (!(err instanceof ApiError)) return false;
   if (err.code) return err.code === 'RATE_LIMITED';
   return err.status === 429;
+}
+
+interface CreditsPurchasedMessage {
+  type: string;
+  orderId?: string;
+  creditsAdded?: number;
+  creditBalance?: number | null;
+}
+
+function isCreditsPurchasedMessage(data: unknown): data is CreditsPurchasedMessage {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { type?: unknown }).type === 'cc:credits_purchased'
+  );
 }
 
 export interface PaywallModule {
@@ -185,8 +198,194 @@ export function createPaywall(
     }
   }
 
+  let creditsPurchasedListener: ((event: MessageEvent) => void) | null = null;
+
+  // Wall-clock timestamp (Date.now()) of when the current checkout session
+  // was armed. Used only for the absolute cap in recheckAfterCheckout below —
+  // never to detect completion (a popup handle's liveness is not trustworthy;
+  // see the comment on recheckAfterCheckout for why).
+  let checkoutStartedAt: number | null = null;
+  let lastFallbackRecheckAt = 0;
+  // A single deferred recheck for a focus/visibility event that arrived
+  // inside the debounce window (see scheduleTrailingRecheck). This is not a
+  // poll: it fires at most once per suppressed event, never re-arms itself,
+  // and is cleared on teardown.
+  let trailingRecheckTimer: ReturnType<typeof setTimeout> | null = null;
+  let focusListener: (() => void) | null = null;
+  let visibilityChangeListener: (() => void) | null = null;
+
+  function removeMessageListener(): void {
+    if (creditsPurchasedListener) {
+      window.removeEventListener('message', creditsPurchasedListener);
+      creditsPurchasedListener = null;
+    }
+  }
+
+  function clearTrailingRecheck(): void {
+    if (trailingRecheckTimer !== null) {
+      clearTimeout(trailingRecheckTimer);
+      trailingRecheckTimer = null;
+    }
+  }
+
+  // Tears down everything armed by doBuyMoreCredits(): the completion
+  // message listener, the focus/visibility fallback, and any pending
+  // trailing-edge recheck. Called on real completion (handleCreditsPurchased),
+  // on the terminal recheck (recheckAfterCheckout), and on destroy().
+  function removeCreditsPurchasedListeners(): void {
+    checkoutStartedAt = null;
+    clearTrailingRecheck();
+    removeMessageListener();
+    if (focusListener) {
+      window.removeEventListener('focus', focusListener);
+      focusListener = null;
+    }
+    if (visibilityChangeListener) {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', visibilityChangeListener);
+      }
+      visibilityChangeListener = null;
+    }
+  }
+
+  function handleCreditsPurchased(event: MessageEvent): void {
+    if (event.origin !== accountsOrigin(config)) return;
+    if (!isCreditsPurchasedMessage(event.data)) return;
+
+    removeCreditsPurchasedListeners();
+
+    const creditsAdded = typeof event.data.creditsAdded === 'number' ? event.data.creditsAdded : 0;
+    const creditBalance = typeof event.data.creditBalance === 'number' ? event.data.creditBalance : null;
+
+    // onCreditsPurchased is emitter-wired in ContentCredits._start() (same
+    // convention as onPurchased) — emitting here reaches it exactly once.
+    emitter.emit('credits:purchased', { creditsAdded, creditBalance });
+
+    void checkAccess();
+  }
+
+  /**
+   * Fallback recovery for when the completion message never arrives. COOP can
+   * sever window.opener, and on some browsers a severed popup's `.closed`
+   * getter reads `true` immediately — even though the popup is still open and
+   * the reader is still mid-payment. That is the *same* severed-opener
+   * condition that stops the `cc:credits_purchased` postMessage from ever
+   * arriving, so the two are not independent signals: reading
+   * the popup handle's `.closed` as "checkout is done" stands the fallback down
+   * exactly when it is the only remaining recovery path. This codebase
+   * already knows popup-handle liveness is untrustworthy — see
+   * `src/auth/popup.ts` (treats `popup.closed` right after `window.open` as
+   * "blocked") and `src/auth/oauth.ts` (needed a server-side poll because the
+   * opener is severed and postMessage never arrives).
+   *
+   * The only real completion signal is checkAccess() itself reporting access
+   * granted (see performRecheck). Both bounds below are evaluated only in
+   * response to a real `focus`/`visibilitychange` event (plus at most one
+   * deferred trailing call per suppressed event — never a self-perpetuating
+   * timer), so this cannot repeat the 2026-07 incident where a poll loop
+   * starved the OTP rate limiter. That also means the bounds only take effect
+   * the next time the reader returns to the tab: if they never come back,
+   * these listeners stay attached — until destroy() tears them down — for the
+   * rest of the page's lifetime. That's harmless (idle event listeners, no
+   * timer running in the background), just not the same claim as "cannot
+   * live forever":
+   *   1. debounced (trailing-edge — see scheduleTrailingRecheck), so rapid
+   *      focus/visibility churn collapses to one call without dropping the
+   *      terminal recheck (the tab regaining focus for good is the normal end
+   *      state, and if that call is silently dropped nothing else ever fires);
+   *   2. an absolute wall-clock cap since the checkout window was armed
+   *      (FALLBACK_RECHECK_MAX_WINDOW_MS) — long enough to cover a slow or
+   *      interrupted PayPal/Apple Pay/card flow, short enough that an
+   *      abandoned checkout doesn't keep rechecking the API indefinitely once
+   *      the reader does come back.
+   */
+  const FALLBACK_RECHECK_MIN_INTERVAL_MS = 2000;
+  // 15 minutes: generous for a distracted checkout (stepping away for a
+  // card, a slow OTP, etc.) without leaving fallback listeners attached for
+  // the rest of the browsing session if the reader abandons checkout outright.
+  const FALLBACK_RECHECK_MAX_WINDOW_MS = 15 * 60 * 1000;
+
+  function performRecheck(): void {
+    clearTrailingRecheck();
+    lastFallbackRecheckAt = Date.now();
+
+    void checkAccess().then(() => {
+      const timedOut = checkoutStartedAt !== null
+        && Date.now() - checkoutStartedAt > FALLBACK_RECHECK_MAX_WINDOW_MS;
+      // Stand down once checkAccess confirms access is granted — that is the
+      // only trustworthy terminal condition — or once the absolute cap above
+      // is hit. The popup handle's `.closed` is deliberately not consulted here.
+      if (state.get().hasAccess || timedOut) {
+        removeCreditsPurchasedListeners();
+      }
+    });
+  }
+
+  function scheduleTrailingRecheck(): void {
+    if (trailingRecheckTimer !== null) return; // one pending trailing call at a time
+    const dueIn = Math.max(0, FALLBACK_RECHECK_MIN_INTERVAL_MS - (Date.now() - lastFallbackRecheckAt));
+    trailingRecheckTimer = setTimeout(() => {
+      trailingRecheckTimer = null;
+      performRecheck();
+    }, dueIn);
+  }
+
+  function recheckAfterCheckout(): void {
+    if (Date.now() - lastFallbackRecheckAt < FALLBACK_RECHECK_MIN_INTERVAL_MS) {
+      // Suppressed by the debounce — defer it to the boundary instead of
+      // dropping it (see FALLBACK_RECHECK_MIN_INTERVAL_MS point 1 above).
+      scheduleTrailingRecheck();
+      return;
+    }
+    performRecheck();
+  }
+
+  function handleFocus(): void {
+    recheckAfterCheckout();
+  }
+
+  function handleVisibilityChange(): void {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible' || !document.visibilityState) {
+      recheckAfterCheckout();
+    }
+  }
+
   function doBuyMoreCredits(): void {
-    window.open(`${__ACCOUNTS_URL__}/consumer/dashboard`, '_blank', 'noopener,noreferrer');
+    removeCreditsPurchasedListeners();
+    lastFallbackRecheckAt = 0;
+    checkoutStartedAt = Date.now();
+
+    creditsPurchasedListener = handleCreditsPurchased;
+    focusListener = handleFocus;
+    visibilityChangeListener = handleVisibilityChange;
+
+    window.addEventListener('message', creditsPurchasedListener);
+    window.addEventListener('focus', focusListener);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', visibilityChangeListener);
+    }
+
+    const url = new URL('/checkout', config.accountsUrl);
+    url.searchParams.set('origin', window.location.origin);
+    url.searchParams.set('reason', 'insufficient');
+    const requiredCredits = state.get().requiredCredits;
+    if (requiredCredits !== null && requiredCredits !== undefined) {
+      url.searchParams.set('required', String(requiredCredits));
+    }
+
+    const popup = openCenteredPopup(url.toString(), { name: 'ccCheckout', width: 480, height: 640 });
+    if (!popup) {
+      // Blocked popup: fall back to opening /consumer/buy-credits in a plain
+      // tab with `noopener`, which severs window.opener entirely — no
+      // `cc:credits_purchased` postMessage can ever reach the `message`
+      // listener, so remove only that one. Focus/visibilitychange recovery is
+      // still possible here, and with no popup handle at all it's the *only*
+      // possible completion signal in this configuration — so leave it armed,
+      // bounded the same way as the popup path (see recheckAfterCheckout).
+      removeMessageListener();
+      const fallbackUrl = new URL('/consumer/buy-credits', config.accountsUrl);
+      window.open(fallbackUrl.toString(), '_blank', 'noopener,noreferrer');
+    }
   }
 
   // ── Extension auth response handler ──────────────────────────────────────
@@ -291,17 +490,38 @@ export function createPaywall(
       if (result.success) {
         handleAccessGranted(0, 0);
       } else {
-        if (!config.headless) {
-          gate.hide();
-          renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
-            requiredCredits: state.get().requiredCredits,
-            creditBalance: state.get().creditBalance,
+        const required = state.get().requiredCredits;
+        const available = state.get().creditBalance;
+
+        // Same precedence rule as the purchase-attempt (doPurchase's catch)
+        // and extension paths: once the balance is known to be below the
+        // price, this is the insufficient-credits state, not the generic
+        // purchase state. Otherwise a recheck after an incomplete top-up
+        // (e.g. the wallet-checkout fallback recheck) silently drops the
+        // reader back onto an Unlock button that is guaranteed to 402.
+        if (required !== null && available !== null && available < required) {
+          if (!config.headless) {
+            gate.hide();
+            renderer.render('insufficient', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+              requiredCredits: required,
+              creditBalance: available,
+            });
+          }
+          config.onInsufficientCredits?.({ required, available });
+          emitter.emit('credits:insufficient', { required, available });
+        } else {
+          if (!config.headless) {
+            gate.hide();
+            renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+              requiredCredits: required,
+              creditBalance: available,
+            });
+          }
+          config.onPurchaseRequired?.({
+            requiredCredits: required,
+            creditBalance: available,
           });
         }
-        config.onPurchaseRequired?.({
-          requiredCredits: state.get().requiredCredits,
-          creditBalance: state.get().creditBalance,
-        });
         emitter.emit('paywall:shown', {});
       }
     } catch (err) {
@@ -350,6 +570,23 @@ export function createPaywall(
         state.set({ isLoading: false, isLoaded: true, hasAccess: data.doesHaveAccess });
         if (data.doesHaveAccess) {
           handleAccessGranted(data.creditsSpent ?? 0, data.creditBalance ?? 0);
+        } else if (data.code === 'INSUFFICIENT_CREDITS' || data.status === 402) {
+          // Same precedence rule as the direct-API path: insufficient credits
+          // must render its dedicated state, not the generic error line.
+          state.set({
+            requiredCredits: data.requiredCredits ?? state.get().requiredCredits,
+            creditBalance: data.creditBalance ?? state.get().creditBalance,
+          });
+          if (!config.headless) {
+            renderer.render('insufficient', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
+              requiredCredits: state.get().requiredCredits,
+              creditBalance: state.get().creditBalance,
+            });
+          }
+          const required = state.get().requiredCredits ?? 0;
+          const available = state.get().creditBalance ?? 0;
+          config.onInsufficientCredits?.({ required, available });
+          emitter.emit('credits:insufficient', { required, available });
         } else {
           renderer.render('purchase', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits }, {
             error: config.paywallCopy?.errorText ?? "Something went wrong and your article wasn't unlocked. Please try again.",
@@ -363,6 +600,7 @@ export function createPaywall(
   }
 
   function destroy(): void {
+    removeCreditsPurchasedListeners();
     bridge.detach();
     if (!config.headless) {
       renderer.destroy();

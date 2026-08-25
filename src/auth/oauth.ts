@@ -162,7 +162,7 @@ function buildAuthorizeUrl(config: ResolvedConfig, state: string, codeChallenge:
   return url.toString();
 }
 
-function accountsOrigin(config: ResolvedConfig): string {
+export function accountsOrigin(config: { accountsUrl: string }): string {
   try {
     return new URL(config.accountsUrl).origin;
   } catch {

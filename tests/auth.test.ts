@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { decodeJwt, isTokenExpired, getUserIdFromToken } from '../src/auth/token';
 import { tokenStorage } from '../src/auth/storage';
-import { isMobileDevice } from '../src/auth/popup';
+import { isMobileDevice, openCenteredPopup } from '../src/auth/popup';
 
 // A real JWT with exp far in the future: { id: 'user123', exp: 9999999999 }
 const VALID_JWT =
@@ -114,5 +114,70 @@ describe('isMobileDevice', () => {
     })) as typeof window.matchMedia;
 
     expect(isMobileDevice()).toBe(true);
+  });
+});
+
+describe('openCenteredPopup', () => {
+  it('opens popup with default dimensions and name', () => {
+    const mockWindow = { closed: false } as Window;
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+
+    Object.defineProperty(window, 'screenX', { value: 100, configurable: true });
+    Object.defineProperty(window, 'screenY', { value: 100, configurable: true });
+    Object.defineProperty(window, 'outerWidth', { value: 1000, configurable: true });
+    Object.defineProperty(window, 'outerHeight', { value: 800, configurable: true });
+
+    const result = openCenteredPopup('https://accounts.example.com/auth');
+
+    expect(result).toBe(mockWindow);
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://accounts.example.com/auth',
+      'ccAuthPopup',
+      expect.stringContaining('width=600,height=650')
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it('opens popup with custom dimensions and name', () => {
+    const mockWindow = { closed: false } as Window;
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+
+    Object.defineProperty(window, 'screenX', { value: 0, configurable: true });
+    Object.defineProperty(window, 'screenY', { value: 0, configurable: true });
+    Object.defineProperty(window, 'outerWidth', { value: 1000, configurable: true });
+    Object.defineProperty(window, 'outerHeight', { value: 800, configurable: true });
+
+    const result = openCenteredPopup('https://accounts.example.com/checkout', {
+      name: 'ccCheckout',
+      width: 480,
+      height: 640,
+    });
+
+    expect(result).toBe(mockWindow);
+    // left = 0 + (1000 - 480) / 2 = 260
+    // top = 0 + (800 - 640) / 2 = 80
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://accounts.example.com/checkout',
+      'ccCheckout',
+      'scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=480,height=640,left=260,top=80'
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it('returns null if window.open returns null or closed popup', () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    expect(openCenteredPopup('https://accounts.example.com')).toBeNull();
+
+    openSpy.mockReturnValue({ closed: true } as Window);
+    expect(openCenteredPopup('https://accounts.example.com')).toBeNull();
+
+    openSpy.mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(openCenteredPopup('https://accounts.example.com')).toBeNull();
+
+    openSpy.mockRestore();
   });
 });

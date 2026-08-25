@@ -59,4 +59,13 @@ describe('resolveConfig', () => {
     });
     expect(config.articleUrl).toBe('https://example.com/article/1?utm_source=test');
   });
+
+  it('passes onCreditsPurchased callback through to resolved config', () => {
+    const onCreditsPurchased = vi.fn();
+    const config = resolveConfig({
+      apiKey: 'pub_test',
+      onCreditsPurchased,
+    });
+    expect(config.onCreditsPurchased).toBe(onCreditsPurchased);
+  });
 });

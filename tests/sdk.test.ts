@@ -49,6 +49,7 @@ describe('ContentCredits', () => {
     const onStateChange = vi.fn();
     const onReady = vi.fn();
     const onPurchased = vi.fn();
+    const onCreditsPurchased = vi.fn();
     const onUserLogout = vi.fn();
 
     const cc = ContentCredits.init({
@@ -57,6 +58,7 @@ describe('ContentCredits', () => {
       onStateChange,
       onReady,
       onPurchased,
+      onCreditsPurchased,
       onUserLogout,
     });
 
@@ -72,9 +74,11 @@ describe('ContentCredits', () => {
 
     cc['emitter'].emit('article:purchased', { creditsSpent: 3, remainingBalance: 8 });
     cc['emitter'].emit('auth:logout', {});
+    cc['emitter'].emit('credits:purchased', { creditsAdded: 50, creditBalance: 55 });
 
     expect(onPurchased).toHaveBeenCalledWith({ creditsSpent: 3, remainingBalance: 8 });
     expect(onUserLogout).toHaveBeenCalledTimes(1);
+    expect(onCreditsPurchased).toHaveBeenCalledWith({ creditsAdded: 50, creditBalance: 55 });
 
     await expect(cc.login()).resolves.toBeUndefined();
     await expect(cc.purchase()).resolves.toBeUndefined();

@@ -334,6 +334,12 @@ export interface SDKConfig {
   onInsufficientCredits?: (info: { required: number; available: number }) => void;
 
   /**
+   * Called after a successful credit purchase via the checkout popup.
+   * Equivalent to listening for the `credits:purchased` event.
+   */
+  onCreditsPurchased?: (info: { creditsAdded: number; creditBalance: number | null }) => void;
+
+  /**
    * Called after a successful article purchase.
    * Equivalent to listening for the `article:purchased` event.
    */
@@ -407,6 +413,7 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   | 'onLoginRequired'
   | 'onPurchaseRequired'
   | 'onInsufficientCredits'
+  | 'onCreditsPurchased'
   | 'onPurchased'
   | 'onUserLogin'
   | 'onUserLogout'
@@ -433,6 +440,7 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   onLoginRequired?: () => void;
   onPurchaseRequired?: (info: { requiredCredits: number | null; creditBalance: number | null }) => void;
   onInsufficientCredits?: (info: { required: number; available: number }) => void;
+  onCreditsPurchased?: (info: { creditsAdded: number; creditBalance: number | null }) => void;
   onPurchased?: (info: { creditsSpent: number; remainingBalance: number }) => void;
   onUserLogin?: (user: User) => void;
   onUserLogout?: () => void;
@@ -474,6 +482,7 @@ export interface SDKEventMap {
   'paywall:hidden': Record<string, never>;
   'article:purchased': { creditsSpent: number; remainingBalance: number };
   'credits:insufficient': { required: number; available: number };
+  'credits:purchased': { creditsAdded: number; creditBalance: number | null };
   'comment:posted': { comment: Comment };
   'comment:liked': { commentId: string; hasLiked: boolean };
   'comment:deleted': { commentId: string };
@@ -501,4 +510,10 @@ export interface PurchaseResponseData {
   doesHaveAccess: boolean;
   creditBalance?: number;
   creditsSpent?: number;
+  /** HTTP status of the backend purchase call, relayed by the extension. */
+  status?: number;
+  /** Backend error code (e.g. 'INSUFFICIENT_CREDITS'), relayed by the extension. */
+  code?: string;
+  message?: string;
+  requiredCredits?: number;
 }

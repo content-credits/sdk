@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createPaywall } from '../src/paywall/index';
 import { createState } from '../src/core/state';
 import { createEventEmitter } from '../src/core/events';
 import { ApiError } from '../src/api/client';
+import { openCenteredPopup } from '../src/auth/popup';
 
 // Shared config literal for the Phase 0 trust-bug tests below — mirrors the
 // per-test literals above but centralised so overrides stay short.
@@ -58,6 +59,7 @@ const bridgeApi = {
   requestPurchase: vi.fn(),
   requestLogin: vi.fn(),
   onAuthorizationResponse: vi.fn(),
+  clearAuthorizationResponse: vi.fn(),
   onPurchaseResponse: vi.fn(),
 };
 
@@ -92,6 +94,13 @@ vi.mock('../src/auth/oauth.js', () => ({
     return !!popupToken;
   }),
   consumeAuthCodeFromUrl: vi.fn().mockResolvedValue(false),
+  accountsOrigin: vi.fn((config: { accountsUrl: string }) => {
+    try {
+      return new URL(config.accountsUrl).origin;
+    } catch {
+      return config.accountsUrl;
+    }
+  }),
 }));
 
 vi.mock('../src/auth/storage.js', () => ({
@@ -668,5 +677,687 @@ describe('paywall flow', () => {
     await callbacks.onRetry?.();
 
     expect(creditsApi.checkAccess).toHaveBeenCalledTimes(2);
+  });
+
+  // ── Wallet checkout ───────────────────────────────────────────────────────
+
+  describe('wallet checkout', () => {
+    it('opens a centered popup (480x640) with origin, reason=insufficient, and required credits when known', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const mockPopup = { closed: false, close: vi.fn() };
+      vi.mocked(openCenteredPopup).mockReturnValue(mockPopup as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({
+          success: false,
+          requiredCredits: 5,
+          creditBalance: 1,
+        }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      tokenPresent = true;
+      await module.init();
+
+      expect(state.get().requiredCredits).toBe(5);
+
+      module.buyMoreCredits();
+
+      expect(openCenteredPopup).toHaveBeenCalledTimes(1);
+      const [popupUrl, popupOptions] = vi.mocked(openCenteredPopup).mock.calls[0];
+      expect(popupOptions).toEqual({ name: 'ccCheckout', width: 480, height: 640 });
+
+      const parsedUrl = new URL(popupUrl);
+      expect(parsedUrl.origin).toBe('https://accounts.contentcredits.com');
+      expect(parsedUrl.pathname).toBe('/checkout');
+      expect(parsedUrl.searchParams.get('origin')).toBe(window.location.origin);
+      expect(parsedUrl.searchParams.get('reason')).toBe('insufficient');
+      expect(parsedUrl.searchParams.get('required')).toBe('5');
+    });
+
+    it('omits the required param when requiredCredits is not known in state', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const mockPopup = { closed: false, close: vi.fn() };
+      vi.mocked(openCenteredPopup).mockReturnValue(mockPopup as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      module.buyMoreCredits();
+
+      expect(openCenteredPopup).toHaveBeenCalledTimes(1);
+      const [popupUrl] = vi.mocked(openCenteredPopup).mock.calls[0];
+      const parsedUrl = new URL(popupUrl);
+      expect(parsedUrl.searchParams.get('origin')).toBe(window.location.origin);
+      expect(parsedUrl.searchParams.get('reason')).toBe('insufficient');
+      expect(parsedUrl.searchParams.has('required')).toBe(false);
+    });
+
+    it('falls back to opening /consumer/buy-credits in a new tab when popup is blocked', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      vi.mocked(openCenteredPopup).mockReturnValue(null);
+
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      module.buyMoreCredits();
+
+      expect(openCenteredPopup).toHaveBeenCalledTimes(1);
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://accounts.contentcredits.com/consumer/buy-credits',
+        '_blank',
+        'noopener,noreferrer'
+      );
+
+      openSpy.mockRestore();
+    });
+
+    it('ignores completion messages from untrusted origins', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const purchasedEvent = vi.fn();
+      emitter.on('credits:purchased', purchasedEvent);
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      module.buyMoreCredits();
+      creditsApi.checkAccess.mockClear();
+
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://evil.attacker.com',
+        data: { type: 'cc:credits_purchased', orderId: 'ord_1', creditsAdded: 50, creditBalance: 50 },
+      }));
+
+      expect(purchasedEvent).not.toHaveBeenCalled();
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+    });
+
+    it('ignores message events with incorrect type from accounts origin', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const purchasedEvent = vi.fn();
+      emitter.on('credits:purchased', purchasedEvent);
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      module.buyMoreCredits();
+      creditsApi.checkAccess.mockClear();
+
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://accounts.contentcredits.com',
+        data: { type: 'cc_other_message', creditsAdded: 50 },
+      }));
+
+      expect(purchasedEvent).not.toHaveBeenCalled();
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+    });
+
+    it('refreshes paywall state, emits credits:purchased, and does NOT auto-purchase on valid message', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const onCreditsPurchased = vi.fn();
+      const purchasedEvent = vi.fn();
+      emitter.on('credits:purchased', purchasedEvent);
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({
+          success: false,
+          requiredCredits: 3,
+          creditBalance: 50,
+        }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig({ onCreditsPurchased }) as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      tokenPresent = true;
+      await module.init();
+
+      module.buyMoreCredits();
+      creditsApi.checkAccess.mockClear();
+
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://accounts.contentcredits.com',
+        data: {
+          type: 'cc:credits_purchased',
+          orderId: 'ord_abc123',
+          creditsAdded: 50,
+          creditBalance: 50,
+        },
+      }));
+
+      expect(purchasedEvent).toHaveBeenCalledWith({ creditsAdded: 50, creditBalance: 50 });
+      // The config callback is emitter-wired in ContentCredits._start(), not
+      // called directly by the paywall (covered by sdk.test.ts) — a direct call
+      // here would mean it fires twice per purchase in the integrated SDK.
+      expect(onCreditsPurchased).not.toHaveBeenCalled();
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      // MUST NOT auto-purchase — the reader clicks Unlock themselves
+      expect(creditsApi.purchaseArticle).not.toHaveBeenCalled();
+
+      // State is updated after checkAccess completes
+      await vi.waitFor(() => {
+        expect(state.get().creditBalance).toBe(50);
+      });
+    });
+
+    it('refreshes credit state on focus while purchase listener is armed', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({
+          success: false,
+          requiredCredits: 5,
+          creditBalance: 10,
+        }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      tokenPresent = true;
+      await module.init();
+
+      module.buyMoreCredits();
+      creditsApi.checkAccess.mockClear();
+
+      creditsApi.checkAccess.mockResolvedValueOnce({
+        success: false,
+        requiredCredits: 5,
+        creditBalance: 60,
+      });
+
+      window.dispatchEvent(new Event('focus'));
+
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(state.get().creditBalance).toBe(60);
+      });
+    });
+
+    it('refreshes credit state on visibilitychange when document becomes visible while purchase listener is armed', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({
+          success: false,
+          requiredCredits: 5,
+          creditBalance: 10,
+        }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      tokenPresent = true;
+      await module.init();
+
+      module.buyMoreCredits();
+      creditsApi.checkAccess.mockClear();
+
+      // Hidden tab should NOT trigger recheck
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+
+      // Visible tab should trigger recheck
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      creditsApi.checkAccess.mockResolvedValueOnce({
+        success: false,
+        requiredCredits: 5,
+        creditBalance: 75,
+      });
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(state.get().creditBalance).toBe(75);
+      });
+    });
+
+    it('unregisters message, focus, and visibilitychange listeners after a valid completion message is received', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const purchasedEvent = vi.fn();
+      emitter.on('credits:purchased', purchasedEvent);
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 3, creditBalance: 20 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      module.buyMoreCredits();
+
+      // First valid message
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://accounts.contentcredits.com',
+        data: { type: 'cc:credits_purchased', creditsAdded: 20, creditBalance: 20 },
+      }));
+
+      expect(purchasedEvent).toHaveBeenCalledTimes(1);
+
+      // Second message dispatched later — should be ignored because listener was removed
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://accounts.contentcredits.com',
+        data: { type: 'cc:credits_purchased', creditsAdded: 20, creditBalance: 40 },
+      }));
+
+      expect(purchasedEvent).toHaveBeenCalledTimes(1);
+
+      // Focus and visibilitychange should no longer trigger checkAccess
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+    });
+
+    it('cleans up message, focus, and visibilitychange listeners when destroy() is called', async () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const purchasedEvent = vi.fn();
+      emitter.on('credits:purchased', purchasedEvent);
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      module.buyMoreCredits();
+      module.destroy();
+
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://accounts.contentcredits.com',
+        data: { type: 'cc:credits_purchased', creditsAdded: 10, creditBalance: 10 },
+      }));
+
+      expect(purchasedEvent).not.toHaveBeenCalled();
+
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+    });
+
+    it('renders the insufficient state when an extension-delegated purchase reports INSUFFICIENT_CREDITS', async () => {
+      extensionDetected = true;
+      tokenPresent = true;
+      const state = createState();
+      const emitter = createEventEmitter();
+      const onInsufficientCredits = vi.fn();
+      const insufficientEvent = vi.fn();
+      emitter.on('credits:insufficient', insufficientEvent);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        { ...baseConfig(), onInsufficientCredits } as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      const initPromise = module.init();
+      // Answer the extension authorization race so init() completes without
+      // waiting out the 3s fallback timeout.
+      await vi.waitFor(() => expect(bridgeApi.onAuthorizationResponse).toHaveBeenCalled());
+      const authHandler = bridgeApi.onAuthorizationResponse.mock.calls[0][0];
+      authHandler({ isAuthenticated: true, doesHaveAccess: false, creditBalance: 2, requiredCredits: 5 });
+      await initPromise;
+      const purchaseHandler = bridgeApi.onPurchaseResponse.mock.calls[0][0];
+      purchaseHandler({
+        doesHaveAccess: false,
+        status: 402,
+        code: 'INSUFFICIENT_CREDITS',
+        requiredCredits: 5,
+        creditBalance: 2,
+      });
+
+      expect(rendererApi.render).toHaveBeenCalledWith(
+        'insufficient',
+        expect.any(Object),
+        expect.objectContaining({ requiredCredits: 5, creditBalance: 2 })
+      );
+      expect(onInsufficientCredits).toHaveBeenCalledWith({ required: 5, available: 2 });
+      expect(insufficientEvent).toHaveBeenCalledWith({ required: 5, available: 2 });
+      expect(creditsApi.purchaseArticle).not.toHaveBeenCalled();
+    });
+
+    it('keeps the generic error for extension purchase failures that are not insufficient credits', async () => {
+      extensionDetected = true;
+      tokenPresent = true;
+      const state = createState();
+      const emitter = createEventEmitter();
+      const errorEvent = vi.fn();
+      emitter.on('error', errorEvent);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig() as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      const initPromise = module.init();
+      await vi.waitFor(() => expect(bridgeApi.onAuthorizationResponse).toHaveBeenCalled());
+      const authHandler = bridgeApi.onAuthorizationResponse.mock.calls[0][0];
+      authHandler({ isAuthenticated: true, doesHaveAccess: false, creditBalance: 2, requiredCredits: 5 });
+      await initPromise;
+      const purchaseHandler = bridgeApi.onPurchaseResponse.mock.calls[0][0];
+      purchaseHandler({ doesHaveAccess: false, status: 500 });
+
+      expect(rendererApi.render).not.toHaveBeenCalledWith(
+        'insufficient',
+        expect.any(Object),
+        expect.any(Object)
+      );
+      expect(errorEvent).toHaveBeenCalledWith({ message: 'Purchase failed via extension' });
+    });
+  });
+
+  // ── Wallet checkout fallback recovery (regressions for S1/S3/S4/S2) ────────
+  //
+  // The tests above all mock the popup as `{ closed: false }`, so they never
+  // exercise the COOP-severed case, the trailing-edge debounce, or the
+  // listener split on a blocked popup. These tests target those paths
+  // specifically — each is written to fail if the corresponding fix is
+  // reverted (see the inline notes on what the old behaviour would do).
+
+  describe('wallet checkout fallback recovery', () => {
+    beforeEach(() => {
+      // These tests exercise checkAccess() via the focus/visibility fallback,
+      // which short-circuits to the login state (never reaching creditsApi)
+      // when no token is present.
+      tokenPresent = true;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('stands the fallback down once checkAccess reports access granted, not because the popup looks closed', async () => {
+      vi.useFakeTimers();
+      const state = createState();
+      const emitter = createEventEmitter();
+      // Popup handle still reports open. The reverted code decided whether to
+      // stand down purely from `checkoutWindow.closed`, so with `closed:
+      // false` it would keep the fallback armed forever even after access is
+      // granted — wasteful, and the opposite failure mode from S1.
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false, close: vi.fn() } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: true }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      expect(state.get().hasAccess).toBe(true);
+
+      // Past the debounce window, with access already granted: the fallback
+      // must have stood down, so a further focus event calls nothing.
+      await vi.advanceTimersByTimeAsync(2100);
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+    });
+
+    it('keeps the fallback armed when a COOP-severed popup reports closed=true immediately but the purchase has not happened', async () => {
+      vi.useFakeTimers();
+      const state = createState();
+      const emitter = createEventEmitter();
+      // This is the COOP scenario S1 exists for: window.opener is severed and
+      // `.closed` reads true right away even though the popup is still open
+      // and the reader is mid-payment. The old code read this as "checkout
+      // finished" and stood the fallback down on the very first recheck —
+      // exactly when it was the only recovery path left.
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: true, close: vi.fn() } as any);
+
+      const creditsApi = {
+        // Never grants access — the purchase genuinely has not completed.
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      expect(state.get().hasAccess).toBe(false);
+
+      // A second real focus event, well past the debounce window, must still
+      // produce a recheck — the old code would have already torn the
+      // listener down after the first event above.
+      await vi.advanceTimersByTimeAsync(2100);
+      creditsApi.checkAccess.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+    });
+
+    it('defers a focus event suppressed by the debounce window instead of dropping it', async () => {
+      vi.useFakeTimers();
+      const state = createState();
+      const emitter = createEventEmitter();
+      vi.mocked(openCenteredPopup).mockReturnValue({ closed: false, close: vi.fn() } as any);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      // Leading-edge recheck.
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+      creditsApi.checkAccess.mockClear();
+
+      // A second focus event arrives well inside the 2s debounce window.
+      await vi.advanceTimersByTimeAsync(200);
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      // Not dropped, but not fired immediately either — it's deferred.
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+
+      // Once the debounce window elapses, the deferred call fires on its own
+      // with no further user gesture. The reverted (leading-edge-only) code
+      // would silently drop the suppressed event and never call again here.
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes only the message listener when the popup is blocked, leaving focus/visibility recovery armed', () => {
+      const state = createState();
+      const emitter = createEventEmitter();
+      const purchasedEvent = vi.fn();
+      emitter.on('credits:purchased', purchasedEvent);
+      vi.mocked(openCenteredPopup).mockReturnValue(null);
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(baseConfig() as any, creditsApi as any, state, emitter, gateApi as any);
+      module.buyMoreCredits();
+
+      // With the popup blocked, the fallback tab opens `noopener` — no
+      // completion message could ever legitimately arrive. Prove the message
+      // listener itself was actually torn down, not just unreachable.
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: 'https://accounts.contentcredits.com',
+        data: { type: 'cc:credits_purchased', creditsAdded: 10, creditBalance: 10 },
+      }));
+      expect(purchasedEvent).not.toHaveBeenCalled();
+      expect(creditsApi.checkAccess).not.toHaveBeenCalled();
+
+      // Focus/visibility recovery must still be armed — with no popup handle
+      // at all, it's the only possible completion signal left. The reverted
+      // code called removeCreditsPurchasedListeners() (all three listeners)
+      // on a blocked popup, so this would never fire.
+      window.dispatchEvent(new Event('focus'));
+      expect(creditsApi.checkAccess).toHaveBeenCalledTimes(1);
+
+      openSpy.mockRestore();
+    });
+
+    it('renders insufficient (not purchase) from checkAccess when the balance is already known to be below the price', async () => {
+      tokenPresent = true;
+      const state = createState();
+      const emitter = createEventEmitter();
+      const onPurchaseRequired = vi.fn();
+      const onInsufficientCredits = vi.fn();
+      const insufficientEvent = vi.fn();
+      emitter.on('credits:insufficient', insufficientEvent);
+
+      const creditsApi = {
+        checkAccess: vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 2 }),
+        purchaseArticle: vi.fn(),
+      };
+
+      const module = createPaywall(
+        baseConfig({ onPurchaseRequired, onInsufficientCredits }) as any,
+        creditsApi as any,
+        state,
+        emitter,
+        gateApi as any
+      );
+
+      await module.init();
+
+      // The reverted code always rendered 'purchase' here and always called
+      // onPurchaseRequired, regardless of the known balance vs. price.
+      expect(rendererApi.render).toHaveBeenCalledWith(
+        'insufficient',
+        expect.any(Object),
+        { requiredCredits: 5, creditBalance: 2 }
+      );
+      expect(onInsufficientCredits).toHaveBeenCalledWith({ required: 5, available: 2 });
+      expect(insufficientEvent).toHaveBeenCalledWith({ required: 5, available: 2 });
+      expect(onPurchaseRequired).not.toHaveBeenCalled();
+      expect(rendererApi.render).not.toHaveBeenCalledWith(
+        'purchase',
+        expect.any(Object),
+        expect.any(Object)
+      );
+    });
   });
 });
