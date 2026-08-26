@@ -354,6 +354,10 @@ function autoInit(): void {
     apiKey,
     contentSelector: ds.ccContentSelector ?? ds.contentSelector,
     teaserParagraphs: ds.ccTeaserParagraphs ? parseInt(ds.ccTeaserParagraphs, 10) : undefined,
+    // Opt-in server-side teaser: absolute URL of the publisher's own content
+    // route for THIS post. Absent → the SDK hides/reveals the content already
+    // on the page, exactly as before.
+    contentEndpoint: ds.ccContentEndpoint,
     enableComments: ds.ccEnableComments !== 'false',
     enableBeacon: ds.ccEnableBeacon !== 'false',
     debug: ds.ccDebug === 'true',

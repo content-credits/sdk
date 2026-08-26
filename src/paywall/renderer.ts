@@ -12,6 +12,9 @@ export type PaywallUIState =
   | 'insufficient'  // logged in but not enough credits
   | 'loading'       // purchase/login in progress
   | 'granted'       // access granted, overlay removed
+  | 'hydrating'     // access granted, fetching the full article from the publisher's
+                    // server-side content endpoint. Only reachable when
+                    // `contentEndpoint` is configured; without it this state never renders.
   | 'error'         // a non-401 access-check failure (network blip, 5xx, rate limit);
                     // distinct from `login` so a signed-in reader isn't told to sign in.
                     // Internal-only — never surfaced through `SDKState`/`onStateChange`
@@ -206,6 +209,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       case 'insufficient':
         renderInsufficient(body, callbacks, meta?.requiredCredits ?? null, meta?.creditBalance ?? null);
         break;
+      case 'hydrating':
+        renderHydrating(body);
+        break;
       case 'error':
         renderError(body, callbacks, meta?.error ?? null);
         break;
@@ -322,6 +328,24 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     btn.className = 'cc-btn cc-btn-sdk';
     btn.addEventListener('click', () => cb.onBuyMoreCredits());
     parent.appendChild(btn);
+
+    parent.appendChild(poweredBy());
+  }
+
+  // Server-side-teaser hydration in flight: the reader is entitled, the page
+  // is still showing only the teaser, and the full article is being fetched
+  // from the publisher's content endpoint. Says what is actually happening
+  // rather than a bare "Loading…" (GLOSSARY.md micro-labels), and carries no
+  // button — there is nothing for the reader to do but wait.
+  function renderHydrating(parent: HTMLElement): void {
+    if (config.showHeadings) {
+      parent.appendChild(el('h2', 'Article unlocked'));
+    }
+
+    const detail = el('p', 'Loading the full article…');
+    detail.className = 'cc-state-detail';
+    detail.setAttribute('aria-live', 'polite');
+    parent.appendChild(detail);
 
     parent.appendChild(poweredBy());
   }

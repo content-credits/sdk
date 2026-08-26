@@ -105,6 +105,26 @@ export interface PurchaseResponse {
   message?: string;
 }
 
+/**
+ * Response from the publisher's own server-side content route (v1 contract).
+ *
+ * This is NOT a Content Credits API shape — it is served by the publisher
+ * (e.g. the WordPress plugin), from the absolute URL in
+ * `SDKConfig.contentEndpoint`. Contract:
+ *   200 → `{ success: true, content: "<full post HTML>" }`
+ *   401 → `{ success: false, code: "UNAUTHENTICATED" }`
+ *   403 → `{ success: false, code: "NO_ACCESS" }`
+ *   503 → `{ success: false, code: "UPSTREAM_UNAVAILABLE" }`
+ */
+export interface PublisherContentResponse {
+  success: boolean;
+  /** Full post HTML. Present only on the 200 success shape. */
+  content?: string;
+  /** Machine-readable failure code on the non-200 shapes. */
+  code?: string;
+  message?: string;
+}
+
 // Backend returns { thread, comments } — no success wrapper
 export interface CommentsResponse {
   thread: CommentThread;
@@ -163,6 +183,27 @@ export interface SDKConfig {
 
   /** Number of visible paragraphs before the paywall kicks in. Default: 2 */
   teaserParagraphs?: number;
+
+  /**
+   * **Opt-in.** Absolute URL of the publisher's own endpoint that serves the
+   * full article HTML to entitled readers.
+   *
+   * Leave this unset (the default) and the SDK behaves exactly as it always
+   * has: the page ships the whole article and the SDK hides everything past
+   * the teaser, revealing it in place once access is granted.
+   *
+   * Set it — normally via the `data-cc-content-endpoint` attribute the
+   * WordPress plugin puts on its script tag — and the page only ever ships a
+   * teaser. When access is granted the SDK GETs this URL with the reader's
+   * Content Credits token as `Authorization: Bearer <token>`, expects
+   * `{ success: true, content: "<html>" }`, sanitizes the HTML, and replaces
+   * the contents of `contentSelector` with it before revealing.
+   *
+   * Must be an absolute `http(s)` URL — the SDK never builds a path of its
+   * own, so the publisher controls the whole route. Note that the reader's
+   * access token is sent to this origin.
+   */
+  contentEndpoint?: string;
 
   /** Whether to enable the comment widget. Default: true */
   enableComments?: boolean;
@@ -403,6 +444,7 @@ export interface SDKTheme {
 }
 
 export interface ResolvedConfig extends Required<Omit<SDKConfig,
+  | 'contentEndpoint'
   | 'renderPaywall'
   | 'unlockButtonLabel'
   | 'paywallCopy'
@@ -428,6 +470,12 @@ export interface ResolvedConfig extends Required<Omit<SDKConfig,
   canonicalArticleUrl: string;
   apiBaseUrl: string;
   accountsUrl: string;
+  /**
+   * Validated absolute `http(s)` server-side-content endpoint, or `null` when
+   * the publisher hasn't opted in. `null` is the compatibility path: every
+   * hide/reveal behaviour stays exactly as it was before hydration existed.
+   */
+  contentEndpoint: string | null;
   paywallMode: 'inline' | 'overlay';
   showHeadings: boolean;
   unlockButtonLabel?: string;
