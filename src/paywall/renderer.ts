@@ -52,6 +52,25 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
   // Guards against in-flight async callbacks (e.g. mountSdkButton ref) firing
   // after destroy() — e.g. React StrictMode double-invoke in development.
   let isDestroyed = false;
+  // Remembered so the page's own overflow is restored exactly, rather than
+  // being reset to '' — a publisher may have set it themselves.
+  let previousBodyOverflow: string | null = null;
+  // True once access has been granted (the 'hydrating' state). The scroll lock
+  // exists to focus the reader on a decision; after a grant there is no
+  // decision left, so they must never be held in place by it.
+  let accessGranted = false;
+
+  function lockScroll(): void {
+    if (config.paywallMode !== 'overlay') return;
+    if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function unlockScroll(): void {
+    if (previousBodyOverflow === null) return;
+    document.body.style.overflow = previousBodyOverflow;
+    previousBodyOverflow = null;
+  }
 
   function init(): void {
     if (config.paywallMode === 'overlay') {
@@ -88,8 +107,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       if (child.getAttribute('slot') === 'paywall-content') child.remove();
     }
 
-    // Lock page scroll while the modal is visible.
-    document.body.style.overflow = 'hidden';
+    // Lock page scroll while the modal is visible. Released by unlockScroll()
+    // on destroy, and immediately for post-grant states (see render()).
+    lockScroll();
 
     const backdrop = el('div');
     backdrop.className = 'cc-paywall-modal-backdrop';
@@ -190,6 +210,15 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
       setButtonLoading(true);
       return;
     }
+
+    // 'hydrating' is only ever reached after access was granted, and any error
+    // rendered afterwards is a failure to LOAD an article the reader has
+    // already paid for — not a decision they still have to make. Both must
+    // leave the page scrollable: init() above locks scroll on the way in, and
+    // without this the reader is trapped on a page they cannot scroll, with no
+    // later 'granted' transition to run destroy() and release it.
+    if (state === 'hydrating') accessGranted = true;
+    if (accessGranted) unlockScroll();
 
     if (state === 'granted') {
       destroy();
@@ -431,10 +460,9 @@ export function createPaywallRenderer(config: ResolvedConfig): PaywallRenderer {
     // removeShadowHost removes the entire host element, which also removes any
     // light DOM children (the slotted container for renderPaywall).
     removeShadowHost(HOST_ID);
-    // Restore scroll lock applied in initModal.
-    if (config.paywallMode === 'overlay') {
-      document.body.style.overflow = '';
-    }
+    // Restore the scroll lock applied in initModal.
+    unlockScroll();
+    accessGranted = false;
     root = null;
     body = null;
   }
