@@ -93,6 +93,7 @@ cc.on('paywall:hidden', () => {
 | `apiKey` | `string` | **required** | Your publisher API key from the dashboard |
 | `contentSelector` | `string` | `'.cc-premium-content'` | CSS selector for the gated element |
 | `teaserParagraphs` | `number` | `2` | Paragraphs to show before the paywall |
+| `contentEndpoint` | `string` | — | **Opt-in.** Absolute URL of your own endpoint serving the full article to entitled readers — see [Server-side teaser](#server-side-teaser) |
 | `enableComments` | `boolean` | `true` | Show the comment widget |
 | `articleUrl` | `string` | `location.href` | Canonical URL of the article |
 | `paywallMode` | `'overlay' \| 'inline'` | `'overlay'` | Paywall layout — overlay sits directly below the teaser; inline is the legacy flow-based panel |
@@ -103,6 +104,71 @@ cc.on('paywall:hidden', () => {
 | `headless` | `boolean` | `false` | Disable all built-in DOM/UI — manage everything yourself via state and callbacks |
 | `onAccessGranted` | `() => void` | — | Fires when content is unlocked |
 | `debug` | `boolean` | `false` | Verbose console logging |
+
+---
+
+## Server-side teaser
+
+By default the SDK assumes the whole article is already in the page and hides
+everything past the teaser. That is client-side gating: the paid content is in
+the HTML, so it is readable in view-source, in the REST/RSS output, and to any
+scraper.
+
+Set `contentEndpoint` and the model flips — your server ships **only the
+teaser**, and the SDK fetches the rest once the reader is entitled:
+
+```ts
+ContentCredits.init({
+  apiKey: 'pub_YOUR_API_KEY',
+  contentSelector: '#premium-content',
+  contentEndpoint: 'https://example.com/wp-json/content-credits/v1/posts/42/content',
+});
+```
+
+Or, for script-tag installs, as a data attribute:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@contentcredits/sdk@3"
+        data-cc-api-key="pub_YOUR_API_KEY"
+        data-cc-content-selector="#premium-content"
+        data-cc-content-endpoint="https://example.com/wp-json/content-credits/v1/posts/42/content"></script>
+```
+
+### What your endpoint must implement
+
+The SDK uses the URL exactly as supplied — it never appends a path — and sends
+the reader's Content Credits token:
+
+```
+GET <your contentEndpoint>
+Authorization: Bearer <reader Content Credits JWT>
+```
+
+| Status | Body | Meaning |
+|--------|------|---------|
+| `200` | `{ "success": true, "content": "<full post HTML>" }` | Reader is entitled — serve the article |
+| `401` | `{ "success": false, "code": "UNAUTHENTICATED" }` | Token missing or invalid |
+| `403` | `{ "success": false, "code": "NO_ACCESS" }` | Valid reader, no entitlement to this post |
+| `503` | `{ "success": false, "code": "UPSTREAM_UNAVAILABLE" }` | Verification temporarily unavailable |
+
+Your endpoint is the security boundary: it must verify the token itself and
+never return content to a reader who hasn't unlocked the article.
+
+### Behaviour
+
+- The returned HTML is **sanitized** (allowlist of article elements and
+  attributes; scripts, event handlers, iframes, forms and non-`http(s)` URLs
+  are stripped) before it replaces the contents of `contentSelector`.
+- Reveal happens **after** injection, so the reader never sees a flash of
+  half-populated content.
+- If the fetch fails, a reader who has already spent credits is shown an
+  explicit failure with a **Try again** action — never a silent teaser and
+  never the unlock panel again. `paywall:hidden`, `article:purchased` and
+  `onAccessGranted` are held back until the article is genuinely on the page.
+- A 401 from *your* endpoint does not sign the reader out of Content Credits.
+- Ignored in `headless` mode — your app owns the DOM.
+- Leave `contentEndpoint` unset and nothing changes: the SDK behaves exactly as
+  it always has.
 
 ---
 

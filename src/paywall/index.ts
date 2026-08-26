@@ -7,6 +7,8 @@ import { isMobileDevice, openCenteredPopup } from '../auth/popup.js';
 import { login as oauthLogin, accountsOrigin } from '../auth/oauth.js';
 import { tokenStorage } from '../auth/storage.js';
 import { ApiError } from '../api/client.js';
+import { fetchGatedContent, ContentFetchError } from '../api/content.js';
+import { sanitizeHtml } from '../ui/sanitize.js';
 import type { createCreditsApi } from '../api/credits.js';
 import type { StateStore } from '../core/state.js';
 import type { EventEmitter } from '../core/events.js';
@@ -79,11 +81,23 @@ export function createPaywall(
   const renderer: PaywallRenderer = createPaywallRenderer(config);
   const bridge = createExtensionBridge();
   let extensionAvailable = false;
+  // Set once the full article has been injected. Guards a repeat access-granted
+  // run — a publisher calling checkAccess() again, or a post-checkout recheck —
+  // from re-fetching and re-injecting content that is already on the page.
+  let contentHydrated = false;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  function handleAccessGranted(creditsSpent = 0, balance = 0): void {
-    state.set({ hasAccess: true, isLoaded: true, isLoading: false });
+  /**
+   * Everything that must happen once the reader can actually SEE the article.
+   *
+   * Split out of handleAccessGranted so the server-side-teaser path can defer
+   * it until the fetched content is on the page: `paywall:hidden`,
+   * `article:purchased` and `onAccessGranted` all mean "the reader is reading
+   * now", and firing them over a still-gated teaser would be a lie publishers
+   * would build analytics and reveal logic on top of.
+   */
+  function completeAccessGranted(creditsSpent: number, balance: number): void {
     if (!config.headless) {
       gate.reveal();
       renderer.render('granted', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
@@ -91,6 +105,101 @@ export function createPaywall(
     emitter.emit('paywall:hidden', {});
     emitter.emit('article:purchased', { creditsSpent, remainingBalance: balance });
     config.onAccessGranted?.();
+  }
+
+  /**
+   * Reader-facing copy for a failed content fetch. Second person, and it always
+   * leads with the fact that the unlock itself worked — this reader has spent
+   * credits, and copy that reads like a paywall would tell them they hadn't.
+   */
+  function hydrationErrorMessage(err: unknown): string {
+    const code = err instanceof ContentFetchError ? err.code : undefined;
+    if (code === 'NO_ACCESS' || code === 'UNAUTHENTICATED') {
+      // The publisher's own route disagrees with the Content Credits API about
+      // this reader. Retrying is still worth offering (a stale cache, a clock
+      // skew), but point them at the site if it persists.
+      return "You've unlocked this article, but this site wouldn't serve it. Please try again, or contact the site if this keeps happening.";
+    }
+    return "You've unlocked this article, but we couldn't load it. Please try again.";
+  }
+
+  /**
+   * Replace the gated element's markup with the sanitized full article.
+   * Returns false when the content element has gone missing.
+   */
+  function injectFullContent(html: string): boolean {
+    const contentEl = document.querySelector<HTMLElement>(config.contentSelector);
+    if (!contentEl) return false;
+    // Sanitize before injection — the fragment is rebuilt from an allowlist,
+    // so no script, event handler, or non-http(s) URL survives.
+    const fragment = sanitizeHtml(html);
+    while (contentEl.firstChild) contentEl.removeChild(contentEl.firstChild);
+    contentEl.appendChild(fragment);
+    return true;
+  }
+
+  /**
+   * Server-side-teaser path: fetch the full article from the publisher's own
+   * endpoint, swap it into the content element, THEN reveal.
+   *
+   * Only reachable when `contentEndpoint` is configured and the SDK owns the
+   * DOM — see handleAccessGranted.
+   */
+  async function hydrateAndComplete(creditsSpent: number, balance: number): Promise<void> {
+    const endpoint = config.contentEndpoint;
+    if (!endpoint || contentHydrated) {
+      completeAccessGranted(creditsSpent, balance);
+      return;
+    }
+
+    renderer.render('hydrating', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+
+    try {
+      const html = await fetchGatedContent(endpoint);
+      if (!injectFullContent(html)) {
+        throw new ContentFetchError(
+          0,
+          `No element matched contentSelector "${config.contentSelector}".`,
+          'NO_CONTENT_ELEMENT'
+        );
+      }
+      contentHydrated = true;
+      completeAccessGranted(creditsSpent, balance);
+    } catch (err) {
+      // A reader who has PAID must never be left silently looking at a teaser.
+      // Render a visible failure with a retry — never the purchase panel, which
+      // would read as "you still haven't paid" — and hold back the
+      // granted-state events until the article is genuinely on the page.
+      renderer.render('error', {
+        onLogin: doLogin,
+        onPurchase: doPurchase,
+        onBuyMoreCredits: doBuyMoreCredits,
+        onRetry: () => hydrateAndComplete(creditsSpent, balance),
+      }, { error: hydrationErrorMessage(err) });
+      emitter.emit('error', { message: 'Could not load the full article', error: err });
+    }
+  }
+
+  /**
+   * The single place access-granted is handled — it serves the normal SDK path
+   * (checkAccess / doPurchase) and the extension path
+   * (handleExtensionAuthResponse / onPurchaseResponse) alike, which is why
+   * hydration hooks in here rather than at each call site.
+   */
+  function handleAccessGranted(creditsSpent = 0, balance = 0): void {
+    state.set({ hasAccess: true, isLoaded: true, isLoading: false });
+
+    // Compatibility path — byte-identical to the pre-hydration behaviour, and
+    // the only path taken when no contentEndpoint is configured (the demo site,
+    // headless integrations, and every non-WordPress publisher). Headless is
+    // included regardless of the endpoint: the host app owns the DOM, so the
+    // SDK must neither fetch nor inject.
+    if (!config.contentEndpoint || config.headless) {
+      completeAccessGranted(creditsSpent, balance);
+      return;
+    }
+
+    void hydrateAndComplete(creditsSpent, balance);
   }
 
   // ── Login ─────────────────────────────────────────────────────────────────

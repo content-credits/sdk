@@ -68,4 +68,54 @@ describe('resolveConfig', () => {
     });
     expect(config.onCreditsPurchased).toBe(onCreditsPurchased);
   });
+  describe('contentEndpoint (opt-in server-side teaser)', () => {
+    it('defaults to null so the legacy hide/reveal path is used', () => {
+      expect(resolveConfig({ apiKey: 'pub_test' }).contentEndpoint).toBeNull();
+    });
+
+    it('accepts an absolute http(s) endpoint verbatim', () => {
+      const url = 'https://example.com/wp-json/content-credits/v1/posts/42/content';
+      const config = resolveConfig({
+        apiKey: 'pub_test',
+        articleUrl: 'https://example.com/post',
+        contentEndpoint: url,
+      });
+      expect(config.contentEndpoint).toBe(url);
+    });
+
+    it('ignores a relative endpoint rather than throwing', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const config = resolveConfig({
+        apiKey: 'pub_test',
+        contentEndpoint: '/wp-json/content-credits/v1/posts/42/content',
+      });
+      expect(config.contentEndpoint).toBeNull();
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('ignores a non-http scheme', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      expect(
+        resolveConfig({ apiKey: 'pub_test', contentEndpoint: 'javascript:alert(1)' }).contentEndpoint
+      ).toBeNull();
+      warn.mockRestore();
+    });
+
+    it('treats a blank endpoint as not configured', () => {
+      expect(resolveConfig({ apiKey: 'pub_test', contentEndpoint: '   ' }).contentEndpoint).toBeNull();
+    });
+
+    it('warns but still accepts a cross-origin endpoint', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const config = resolveConfig({
+        apiKey: 'pub_test',
+        articleUrl: 'https://example.com/post',
+        contentEndpoint: 'https://cdn.other.example/content/42',
+      });
+      expect(config.contentEndpoint).toBe('https://cdn.other.example/content/42');
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+  });
 });
