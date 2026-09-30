@@ -95,8 +95,12 @@ export interface ApiResponse<T = Record<string, unknown>> {
 export interface CheckAccessResponse {
   success: boolean;
   message?: string;
+  /** Machine-readable reason, e.g. `'SIGN_IN_REQUIRED'` for a signed-out caller. */
+  code?: string;
   requiredCredits?: number;
-  creditBalance?: number;
+  creditBalance?: number | null;
+  /** Who the answer is for. `'agent'` is reserved for the future; not produced today. */
+  principal?: { type: 'anonymous' | 'reader' };
 }
 
 // Backend returns { success: boolean, message: string } — no balance/creditsSpent in response
