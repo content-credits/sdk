@@ -648,8 +648,25 @@ export function createPaywall(
         hostName: config.hostName,
       });
 
-      // The API accepted the token → user is definitely authenticated,
-      // regardless of whether they have access to this specific article.
+      // A 200 that says "sign in" means the credentials vanished between the
+      // tokenStorage.has() check and the request (the API answers a request
+      // with no credentials this way instead of 401). Treat it exactly like
+      // the signed-out path — never as an authenticated reader.
+      if (result.code === 'SIGN_IN_REQUIRED' || result.principal?.type === 'anonymous') {
+        state.set({ isLoading: false, isLoaded: true, hasAccess: false, isLoggedIn: false });
+        if (!config.headless) {
+          gate.hide();
+          renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
+        }
+        reportOfferShown('login');
+        config.onLoginRequired?.();
+        emitter.emit('paywall:shown', {});
+        return;
+      }
+
+      // Any other response means the API accepted the token → user is
+      // definitely authenticated, regardless of whether they have access to
+      // this specific article.
       state.set({
         isLoading: false,
         isLoaded: true,
