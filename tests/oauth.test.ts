@@ -366,6 +366,62 @@ describe('oauth', () => {
       });
     });
 
+    describe('anonId linking in the token exchange', () => {
+      const ANON = '0b7c1e52-6f7d-4c2e-9d0a-3a1f5e8b9c11';
+
+      async function exchange(cfg: ResolvedConfig): Promise<Record<string, unknown>> {
+        setLocation(`http://localhost:3000/post?cc_auth_code=code123&cc_state=${STATE}`);
+        sessionStorage.setItem('cc_pkce_pending', JSON.stringify({ state: STATE, verifier: VERIFIER }));
+        vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+          accessToken: VALID_JWT,
+          refreshToken: 'refresh_456',
+        }), { status: 200 }));
+        await consumeAuthCodeFromUrl(cfg);
+        const [url, requestInit] = vi.mocked(fetch).mock.calls[0];
+        expect(url).toBe('https://api.contentcredits.com/auth/token');
+        return JSON.parse(requestInit!.body as string);
+      }
+
+      function storeAnonId(): void {
+        localStorage.setItem('cc_anon_id', JSON.stringify({ value: ANON, expiresAt: Date.now() + 60_000 }));
+      }
+
+      it('sends an existing anonId when consent is granted', async () => {
+        storeAnonId();
+        const body = await exchange({ ...config, analyticsConsent: 'granted' } as ResolvedConfig);
+        expect(body).toEqual({ code: 'code123', code_verifier: VERIFIER, anonId: ANON });
+      });
+
+      it('does not link when consent is unknown (or unset)', async () => {
+        storeAnonId();
+        const body = await exchange({ ...config, analyticsConsent: 'unknown' } as ResolvedConfig);
+        expect(body).toEqual({ code: 'code123', code_verifier: VERIFIER });
+      });
+
+      it('suppresses it when consent is denied', async () => {
+        storeAnonId();
+        const body = await exchange({ ...config, analyticsConsent: 'denied' } as ResolvedConfig);
+        expect(body).toEqual({ code: 'code123', code_verifier: VERIFIER });
+      });
+
+      it('suppresses it when the beacon is disabled', async () => {
+        storeAnonId();
+        const body = await exchange({ ...config, analyticsConsent: 'granted', enableBeacon: false } as ResolvedConfig);
+        expect(body).not.toHaveProperty('anonId');
+      });
+
+      it('never creates an anonId when none exists', async () => {
+        const body = await exchange({ ...config, analyticsConsent: 'granted', enableBeacon: true } as ResolvedConfig);
+        expect(body).toEqual({ code: 'code123', code_verifier: VERIFIER });
+        expect(localStorage.getItem('cc_anon_id')).toBeNull();
+      });
+
+      it('ignores an expired anonId', async () => {
+        localStorage.setItem('cc_anon_id', JSON.stringify({ value: ANON, expiresAt: Date.now() - 1 }));
+        expect(await exchange({ ...config, analyticsConsent: 'granted' } as ResolvedConfig)).not.toHaveProperty('anonId');
+      });
+    });
+
     it('notifies a reachable opener on success', async () => {
       setLocation(`http://localhost:3000/post?cc_auth_code=code123&cc_state=${STATE}`);
       sessionStorage.setItem('cc_pkce_pending', JSON.stringify({ state: STATE, verifier: VERIFIER }));

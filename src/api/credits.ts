@@ -3,7 +3,7 @@ import type { CheckAccessResponse, PurchaseResponse } from '../types/index.js';
 
 export interface CreditsApi {
   checkAccess(params: { apiKey: string; postUrl: string; postName: string; hostName: string }): Promise<CheckAccessResponse>;
-  purchaseArticle(params: { apiKey: string; postUrl: string; postName: string; hostName: string }): Promise<PurchaseResponse>;
+  purchaseArticle(params: { apiKey: string; postUrl: string; postName: string; hostName: string; decisionId?: string }): Promise<PurchaseResponse>;
 }
 
 export function createCreditsApi(client: ApiClient): CreditsApi {
@@ -27,12 +27,14 @@ export function createCreditsApi(client: ApiClient): CreditsApi {
       postUrl: string;
       postName: string;
       hostName: string;
+      decisionId?: string;
     }): Promise<PurchaseResponse> {
       return client.post<PurchaseResponse>('/credits/purchase-article', {
         apiKey: params.apiKey,
         postUrl: params.postUrl,
         postName: params.postName,
         hostName: params.hostName,
+        ...(params.decisionId ? { decisionId: params.decisionId } : {}),
       });
     },
   };

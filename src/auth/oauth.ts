@@ -1,5 +1,6 @@
 import { tokenStorage, refreshTokenStorage } from './storage.js';
 import { isMobileDevice, openCenteredPopup } from './popup.js';
+import { getAnonIdIfPresent } from '../beacon/anonId.js';
 import type { ResolvedConfig } from '../types/index.js';
 
 const PENDING_KEY = 'cc_pkce_pending';
@@ -114,12 +115,28 @@ function takePending(): PendingAuthorization | null {
 
 // ── Token exchange ───────────────────────────────────────────────────────────
 
-async function exchangeCode(apiBaseUrl: string, code: string, verifier: string): Promise<boolean> {
+/**
+ * The anonymous id to link to the account being signed in, or undefined.
+ * Linking a reader's anonymous history to their account needs explicit
+ * consent: only `analyticsConsent === 'granted'` links. `'unknown'` does not,
+ * because setAnalyticsConsent() isn't persisted — after a full-page redirect
+ * sign-in it resets to `'unknown'`, and a reader who denied in a consent
+ * banner must not be linked by that reset. Also read-only (never creates an
+ * id) and suppressed when the beacon — the anonId's owner — is off.
+ */
+function anonIdForLinking(config: ResolvedConfig): string | undefined {
+  if (config.analyticsConsent !== 'granted' || config.enableBeacon === false) return undefined;
+  return getAnonIdIfPresent() ?? undefined;
+}
+
+async function exchangeCode(config: ResolvedConfig, code: string, verifier: string): Promise<boolean> {
+  const apiBaseUrl = config.apiBaseUrl;
   try {
+    const anonId = anonIdForLinking(config);
     const resp = await fetch(`${apiBaseUrl}/auth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, code_verifier: verifier }),
+      body: JSON.stringify({ code, code_verifier: verifier, ...(anonId ? { anonId } : {}) }),
       credentials: 'omit',
     });
 
@@ -314,7 +331,7 @@ async function doLogin(config: ResolvedConfig): Promise<boolean> {
   try {
     const code = await waitForCode(popup, config, state);
     if (!code) return false;
-    return await exchangeCode(config.apiBaseUrl, code, verifier);
+    return await exchangeCode(config, code, verifier);
   } finally {
     // The popup path resolves the code in-memory and never routes back through
     // consumeAuthCodeFromUrl, so nothing else clears the pending PKCE we stored
@@ -355,7 +372,7 @@ export async function consumeAuthCodeFromUrl(config: ResolvedConfig): Promise<bo
   const pending = takePending();
   if (!pending || pending.state !== state) return false;
 
-  const ok = await exchangeCode(config.apiBaseUrl, code, pending.verifier);
+  const ok = await exchangeCode(config, code, pending.verifier);
 
   if (ok) {
     const opener = window.opener as Window | null;

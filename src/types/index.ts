@@ -95,8 +95,12 @@ export interface ApiResponse<T = Record<string, unknown>> {
 export interface CheckAccessResponse {
   success: boolean;
   message?: string;
+  /** Machine-readable reason, e.g. `'SIGN_IN_REQUIRED'` for a signed-out caller. */
+  code?: string;
   requiredCredits?: number;
-  creditBalance?: number;
+  creditBalance?: number | null;
+  /** Who the answer is for. `'agent'` is reserved for the future; not produced today. */
+  principal?: { type: 'anonymous' | 'reader' };
 }
 
 // Backend returns { success: boolean, message: string } — no balance/creditsSpent in response
@@ -149,6 +153,34 @@ export interface ObservePostPayload {
   anonId?: string;
   /** `document.referrer` at beacon time, when available. */
   referrer?: string;
+  /** Publisher-declared analytics consent; omitted anonId when `'denied'`. */
+  consent?: AnalyticsConsent;
+}
+
+/** Publisher-declared analytics consent state for this page load. */
+export type AnalyticsConsent = 'granted' | 'denied' | 'unknown';
+
+/** Gated paywall states an offer can be shown in. */
+export type OfferState = 'login' | 'purchase' | 'insufficient';
+
+/** POST /posts/offer-shown request body. Never carries a price — the server owns it. */
+export interface OfferShownPayload {
+  apiKey: string;
+  url: string;
+  hostName: string;
+  state: OfferState;
+  surface: 'sdk';
+  anonId?: string;
+  consent?: AnalyticsConsent;
+  referrer?: string;
+}
+
+/** `decisionId` is null when the server could not resolve the post. */
+export interface OfferShownResponse {
+  success?: boolean;
+  decisionId?: string | null;
+  price?: number;
+  [key: string]: unknown;
 }
 
 /** Backend acks with the upserted Post id (shape TBD — kept loose intentionally). */
@@ -219,6 +251,19 @@ export interface SDKConfig {
    * Default: `true`
    */
   enableBeacon?: boolean;
+
+  /**
+   * Your reader-consent state for analytics identifiers. Sent with the view
+   * beacon and the offer-exposure event.
+   * - `'granted'` / `'unknown'` — the SDK may use its anonymous, non-PII
+   *   `anonId` for view dedup.
+   * - `'denied'` — the SDK never creates, reads or sends the `anonId`.
+   *
+   * Wire this to your consent banner. Data attribute: `data-cc-analytics-consent`.
+   *
+   * Default: `'unknown'`
+   */
+  analyticsConsent?: AnalyticsConsent;
 
   /** Visual theme options */
   theme?: SDKTheme;
