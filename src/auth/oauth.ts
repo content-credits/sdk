@@ -117,11 +117,15 @@ function takePending(): PendingAuthorization | null {
 
 /**
  * The anonymous id to link to the account being signed in, or undefined.
- * Read-only (never creates one) and suppressed when analytics consent is
- * denied or the beacon — the anonId's owner — is off.
+ * Linking a reader's anonymous history to their account needs explicit
+ * consent: only `analyticsConsent === 'granted'` links. `'unknown'` does not,
+ * because setAnalyticsConsent() isn't persisted — after a full-page redirect
+ * sign-in it resets to `'unknown'`, and a reader who denied in a consent
+ * banner must not be linked by that reset. Also read-only (never creates an
+ * id) and suppressed when the beacon — the anonId's owner — is off.
  */
 function anonIdForLinking(config: ResolvedConfig): string | undefined {
-  if (config.analyticsConsent === 'denied' || config.enableBeacon === false) return undefined;
+  if (config.analyticsConsent !== 'granted' || config.enableBeacon === false) return undefined;
   return getAnonIdIfPresent() ?? undefined;
 }
 

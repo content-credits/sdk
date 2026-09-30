@@ -386,15 +386,16 @@ describe('oauth', () => {
         localStorage.setItem('cc_anon_id', JSON.stringify({ value: ANON, expiresAt: Date.now() + 60_000 }));
       }
 
-      it('sends an existing anonId', async () => {
+      it('sends an existing anonId when consent is granted', async () => {
         storeAnonId();
-        expect(await exchange(config)).toEqual({ code: 'code123', code_verifier: VERIFIER, anonId: ANON });
+        const body = await exchange({ ...config, analyticsConsent: 'granted' } as ResolvedConfig);
+        expect(body).toEqual({ code: 'code123', code_verifier: VERIFIER, anonId: ANON });
       });
 
-      it('sends it when consent is granted or unknown', async () => {
+      it('does not link when consent is unknown (or unset)', async () => {
         storeAnonId();
-        const body = await exchange({ ...config, analyticsConsent: 'granted', enableBeacon: true } as ResolvedConfig);
-        expect(body.anonId).toBe(ANON);
+        const body = await exchange({ ...config, analyticsConsent: 'unknown' } as ResolvedConfig);
+        expect(body).toEqual({ code: 'code123', code_verifier: VERIFIER });
       });
 
       it('suppresses it when consent is denied', async () => {
@@ -405,7 +406,7 @@ describe('oauth', () => {
 
       it('suppresses it when the beacon is disabled', async () => {
         storeAnonId();
-        const body = await exchange({ ...config, enableBeacon: false } as ResolvedConfig);
+        const body = await exchange({ ...config, analyticsConsent: 'granted', enableBeacon: false } as ResolvedConfig);
         expect(body).not.toHaveProperty('anonId');
       });
 
@@ -417,7 +418,7 @@ describe('oauth', () => {
 
       it('ignores an expired anonId', async () => {
         localStorage.setItem('cc_anon_id', JSON.stringify({ value: ANON, expiresAt: Date.now() - 1 }));
-        expect(await exchange(config)).not.toHaveProperty('anonId');
+        expect(await exchange({ ...config, analyticsConsent: 'granted' } as ResolvedConfig)).not.toHaveProperty('anonId');
       });
     });
 
