@@ -101,6 +101,8 @@ cc.on('paywall:hidden', () => {
 | `reactDOM` | `ReactDOMAdapter` | — | Your `ReactDOM` instance — required when `paywallTopSlot` is a React element |
 | `theme.primaryColor` | `string` | `'#44C678'` | Brand colour for buttons |
 | `theme.fontFamily` | `string` | system UI | Font for all SDK UI |
+| `enableBeacon` | `boolean` | `true` | Send the post-discovery / view beacon on page load (`data-cc-enable-beacon="false"` to disable) |
+| `analyticsConsent` | `'granted' \| 'denied' \| 'unknown'` | `'unknown'` | Your reader-consent state for analytics identifiers (`data-cc-analytics-consent`). When `'denied'` the SDK never creates, reads or sends its anonymous `anonId` on the view beacon or the offer-exposure event |
 | `headless` | `boolean` | `false` | Disable all built-in DOM/UI — manage everything yourself via state and callbacks |
 | `onAccessGranted` | `() => void` | — | Fires when content is unlocked |
 | `debug` | `boolean` | `false` | Verbose console logging |

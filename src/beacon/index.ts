@@ -27,8 +27,10 @@ export function sendBeacon(
         author: meta.author,
         publishedAt: meta.publishedAt,
         thumbnailUrl: meta.thumbnailUrl,
-        anonId: getOrCreateAnonId(),
+        // Consent denied: the anonId is never created, read or sent.
+        anonId: config.analyticsConsent === 'denied' ? undefined : getOrCreateAnonId(),
         referrer: document.referrer || undefined,
+        consent: config.analyticsConsent,
       })
       .catch(err => {
         if (config.debug) console.warn('[ContentCredits] beacon failed', err);

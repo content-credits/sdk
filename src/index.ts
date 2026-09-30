@@ -14,7 +14,7 @@
  *   ContentCredits.init({ apiKey: 'YOUR_API_KEY', contentSelector: '#article-body' });
  */
 
-import { resolveConfig } from './core/config.js';
+import { resolveConfig, normalizeConsent } from './core/config.js';
 import { createState } from './core/state.js';
 import { createEventEmitter } from './core/events.js';
 import { createApiClient } from './api/client.js';
@@ -169,7 +169,8 @@ export class ContentCredits {
       this.creditsApi,
       this.state,
       this.emitter,
-      earlyGate
+      earlyGate,
+      this.postsApi
     );
 
     if (this.config.enableComments) {
@@ -360,6 +361,7 @@ function autoInit(): void {
     contentEndpoint: ds.ccContentEndpoint,
     enableComments: ds.ccEnableComments !== 'false',
     enableBeacon: ds.ccEnableBeacon !== 'false',
+    analyticsConsent: normalizeConsent(ds.ccAnalyticsConsent),
     debug: ds.ccDebug === 'true',
   };
 

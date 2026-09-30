@@ -9,10 +9,12 @@ import { tokenStorage } from '../auth/storage.js';
 import { ApiError } from '../api/client.js';
 import { fetchGatedContent, ContentFetchError } from '../api/content.js';
 import { sanitizeHtml } from '../ui/sanitize.js';
+import { getOrCreateAnonId } from '../beacon/anonId.js';
 import type { createCreditsApi } from '../api/credits.js';
+import type { createPostsApi } from '../api/posts.js';
 import type { StateStore } from '../core/state.js';
 import type { EventEmitter } from '../core/events.js';
-import type { ResolvedConfig, AuthorizationResponseData } from '../types/index.js';
+import type { ResolvedConfig, AuthorizationResponseData, OfferState } from '../types/index.js';
 
 // How long to wait for the extension to respond to an authorization request
 // before falling back to the direct API check. MV3 service workers can take
@@ -68,7 +70,8 @@ export function createPaywall(
   creditsApi: ReturnType<typeof createCreditsApi>,
   state: StateStore,
   emitter: EventEmitter,
-  existingGate?: Gate
+  existingGate?: Gate,
+  postsApi?: ReturnType<typeof createPostsApi>
 ): PaywallModule {
   // Accept a pre-created gate so the caller can call gate.hide() synchronously
   // before any async work, preventing a flash of the full article content.
@@ -85,8 +88,53 @@ export function createPaywall(
   // run — a publisher calling checkAccess() again, or a post-checkout recheck —
   // from re-fetching and re-injecting content that is already on the page.
   let contentHydrated = false;
+  // Offer exposure (POST /posts/offer-shown): the last gated state we reported
+  // this page load, so re-renders of the same state don't refire, and the
+  // server-minted decisionId that links a later purchase back to that offer.
+  let lastOfferState: OfferState | null = null;
+  let decisionId: string | undefined;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
+
+  /**
+   * Report that a gated state (login / purchase / insufficient) was shown to a
+   * reader without access. Fire-and-forget: never awaited, never throws, and a
+   * failure is debug-logged only — it must not delay or break the paywall.
+   * Once per state transition per page load; call sites sit next to the
+   * render / headless-callback for that state, so headless mode reports when
+   * the publisher's callback would be invoked. The SDK never sends a price.
+   */
+  function reportOfferShown(offerState: OfferState): void {
+    if (!postsApi || lastOfferState === offerState) return;
+    lastOfferState = offerState;
+    decisionId = undefined; // belongs to the previous offer
+
+    try {
+      const consent = config.analyticsConsent ?? 'unknown';
+      void Promise.resolve(postsApi.offerShown({
+        apiKey: config.apiKey,
+        url: config.articleUrl,
+        hostName: config.hostName,
+        state: offerState,
+        surface: 'sdk',
+        // Consent denied: the anonId is never created, read or sent.
+        anonId: consent === 'denied' ? undefined : getOrCreateAnonId(),
+        consent,
+        referrer: document.referrer || undefined,
+      }))
+        .then(res => {
+          // Ignore a late response for a state the reader has already left.
+          if (lastOfferState === offerState && res && typeof res.decisionId === 'string' && res.decisionId) {
+            decisionId = res.decisionId;
+          }
+        })
+        .catch(err => {
+          if (config.debug) console.warn('[ContentCredits] offer-shown failed', err);
+        });
+    } catch (err) {
+      if (config.debug) console.warn('[ContentCredits] offer-shown failed', err);
+    }
+  }
 
   /**
    * Everything that must happen once the reader can actually SEE the article.
@@ -256,6 +304,7 @@ export function createPaywall(
         postUrl: config.articleUrl,
         postName: config.pageTitle,
         hostName: config.hostName,
+        ...(decisionId ? { decisionId } : {}),
       });
 
       if (result.success) {
@@ -286,6 +335,7 @@ export function createPaywall(
         }
         const required = state.get().requiredCredits ?? 0;
         const available = state.get().creditBalance ?? 0;
+        reportOfferShown('insufficient');
         config.onInsufficientCredits?.({ required, available });
         emitter.emit('credits:insufficient', { required, available });
       } else {
@@ -514,6 +564,7 @@ export function createPaywall(
         gate.hide();
         renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
       }
+      reportOfferShown('login');
       config.onLoginRequired?.();
       emitter.emit('paywall:shown', {});
     } else if (data.doesHaveAccess) {
@@ -526,6 +577,7 @@ export function createPaywall(
           creditBalance: data.creditBalance,
         });
       }
+      reportOfferShown('purchase');
       config.onPurchaseRequired?.({
         requiredCredits: data.requiredCredits ?? null,
         creditBalance: data.creditBalance ?? null,
@@ -572,6 +624,7 @@ export function createPaywall(
         gate.hide();
         renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
       }
+      reportOfferShown('login');
       config.onLoginRequired?.();
       emitter.emit('paywall:shown', {});
       return;
@@ -616,6 +669,7 @@ export function createPaywall(
               creditBalance: available,
             });
           }
+          reportOfferShown('insufficient');
           config.onInsufficientCredits?.({ required, available });
           emitter.emit('credits:insufficient', { required, available });
         } else {
@@ -626,6 +680,7 @@ export function createPaywall(
               creditBalance: available,
             });
           }
+          reportOfferShown('purchase');
           config.onPurchaseRequired?.({
             requiredCredits: required,
             creditBalance: available,
@@ -643,6 +698,7 @@ export function createPaywall(
           gate.hide();
           renderer.render('login', { onLogin: doLogin, onPurchase: doPurchase, onBuyMoreCredits: doBuyMoreCredits });
         }
+        reportOfferShown('login');
         config.onLoginRequired?.();
       } else {
         // A non-401 failure (network blip, 5xx, rate limit) says nothing about
@@ -694,6 +750,7 @@ export function createPaywall(
           }
           const required = state.get().requiredCredits ?? 0;
           const available = state.get().creditBalance ?? 0;
+          reportOfferShown('insufficient');
           config.onInsufficientCredits?.({ required, available });
           emitter.emit('credits:insufficient', { required, available });
         } else {
