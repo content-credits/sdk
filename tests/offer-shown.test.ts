@@ -261,3 +261,130 @@ describe('credits api purchaseArticle decisionId', () => {
     expect(client.post.mock.calls[1][1]).toEqual(base);
   });
 });
+
+describe('offer-shown: beacon off and headless gating', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tokenPresent = false;
+    localStorage.clear();
+  });
+
+  it('enableBeacon false: still fires, without creating or sending an anonId', async () => {
+    const { module, postsApi } = setup({ config: { enableBeacon: false } });
+    await module.init();
+    expect(postsApi.offerShown).toHaveBeenCalledTimes(1);
+    expect(postsApi.offerShown.mock.calls[0][0].anonId).toBeUndefined();
+    expect(localStorage.getItem('cc_anon_id')).toBeNull();
+  });
+
+  it('headless without the matching callback does not fire', async () => {
+    const { module, postsApi } = setup({ config: { headless: true } });
+    await module.init();
+    expect(postsApi.offerShown).not.toHaveBeenCalled();
+  });
+
+  it('headless login fires only with onLoginRequired defined', async () => {
+    const { module, postsApi } = setup({ config: { headless: true, onLoginRequired: vi.fn() } });
+    await module.init();
+    expect(postsApi.offerShown).toHaveBeenCalledTimes(1);
+    expect(postsApi.offerShown.mock.calls[0][0].state).toBe('login');
+  });
+
+  it('headless insufficient needs onInsufficientCredits, not onPurchaseRequired', async () => {
+    tokenPresent = true;
+    const checkAccess = vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 });
+    const a = setup({ checkAccess, config: { headless: true, onPurchaseRequired: vi.fn() } });
+    await a.module.init();
+    expect(a.postsApi.offerShown).not.toHaveBeenCalled();
+    const b = setup({ checkAccess, config: { headless: true, onInsufficientCredits: vi.fn() } });
+    await b.module.init();
+    expect(b.postsApi.offerShown.mock.calls[0][0].state).toBe('insufficient');
+  });
+
+  it('non-headless fires on render without any callback', async () => {
+    const { module, postsApi } = setup();
+    await module.init();
+    expect(postsApi.offerShown).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('client-side view dedup for consent-denied readers', () => {
+  const bc = (o: Record<string, unknown> = {}): any => ({
+    apiKey: 'pub_123', articleUrl: 'https://example.com/post', canonicalArticleUrl: 'https://example.com/post',
+    pageTitle: 'T', contentSelector: '.x', enableBeacon: true, debug: false, analyticsConsent: 'denied', ...o,
+  });
+  const KEY = 'cc_viewed:https://example.com/post';
+
+  beforeEach(() => {
+    tokenPresent = false;
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.useRealTimers();
+  });
+
+  it('sends the first view, stores only a timestamp, and skips a repeat within 30 minutes', () => {
+    const observe = vi.fn().mockResolvedValue({});
+    sendBeacon(bc(), { observe } as any);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(KEY)).toMatch(/^\d+$/);
+    sendBeacon(bc(), { observe } as any);
+    expect(observe).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends again once 30 minutes have passed', () => {
+    const observe = vi.fn().mockResolvedValue({});
+    sessionStorage.setItem(KEY, String(Date.now() - 31 * 60 * 1000));
+    sendBeacon(bc(), { observe } as any);
+    expect(observe).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not dedup when consent is not denied', () => {
+    const observe = vi.fn().mockResolvedValue({});
+    sendBeacon(bc({ analyticsConsent: 'unknown' }), { observe } as any);
+    sendBeacon(bc({ analyticsConsent: 'unknown' }), { observe } as any);
+    expect(observe).toHaveBeenCalledTimes(2);
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('does not dedup a signed-in reader', () => {
+    tokenPresent = true;
+    const observe = vi.fn().mockResolvedValue({});
+    sendBeacon(bc(), { observe } as any);
+    sendBeacon(bc(), { observe } as any);
+    expect(observe).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends when sessionStorage throws', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    const observe = vi.fn().mockResolvedValue({});
+    try {
+      sendBeacon(bc(), { observe } as any);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(observe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('setAnalyticsConsent', () => {
+  it('normalises and updates the resolved config later calls read', async () => {
+    const { ContentCredits } = await import('../src/index');
+    const config: any = { analyticsConsent: 'unknown' };
+    const inst: any = Object.create(ContentCredits.prototype);
+    inst.config = config;
+    inst.setAnalyticsConsent('denied');
+    expect(config.analyticsConsent).toBe('denied');
+    inst.setAnalyticsConsent('bogus');
+    expect(config.analyticsConsent).toBe('unknown');
+  });
+
+  it('a later offer-shown honours the updated consent', async () => {
+    const config = cfg({ analyticsConsent: 'unknown' });
+    const postsApi = { observe: vi.fn(), offerShown: vi.fn().mockResolvedValue({}) };
+    const module = createPaywall(config, { checkAccess: vi.fn(), purchaseArticle: vi.fn() } as any,
+      createState(), createEventEmitter(), gateApi as any, postsApi as any);
+    config.analyticsConsent = normalizeConsent('denied'); // what setAnalyticsConsent does
+    await module.init();
+    expect(postsApi.offerShown.mock.calls[0][0]).toEqual(expect.objectContaining({ consent: 'denied', anonId: undefined }));
+  });
+});

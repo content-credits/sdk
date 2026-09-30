@@ -34,9 +34,10 @@ import type {
   SDKState,
   SDKEventName,
   SDKEventHandler,
+  AnalyticsConsent,
 } from './types/index.js';
 
-export type { SDKConfig, SDKState, SDKEventName, SDKEventHandler };
+export type { SDKConfig, SDKState, SDKEventName, SDKEventHandler, AnalyticsConsent };
 export type { User, Comment, CommentSortBy } from './types/index.js';
 
 declare const __VERSION__: string;
@@ -319,6 +320,19 @@ export class ContentCredits {
     refreshTokenStorage.clear();
     this.state.reset();
     this.emitter.emit('auth:logout', {});
+  }
+
+  /**
+   * Update analytics consent after init, e.g. once a consent banner resolves.
+   * The value is normalised (anything but `'granted'`/`'denied'` becomes
+   * `'unknown'`) and read by every later analytics call: offer-shown and the
+   * consent field sent with it. `'denied'` stops the anonId from being created,
+   * read or sent from then on. The view beacon fires once at init, so it is
+   * not re-sent; set `analyticsConsent` in the init config if it must be
+   * known before then.
+   */
+  setAnalyticsConsent(value: AnalyticsConsent): void {
+    this.config.analyticsConsent = normalizeConsent(value);
   }
 
   /** Tear down the SDK — removes all UI, event listeners, and stored state. */

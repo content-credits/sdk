@@ -102,10 +102,19 @@ export function createPaywall(
    * failure is debug-logged only — it must not delay or break the paywall.
    * Once per state transition per page load; call sites sit next to the
    * render / headless-callback for that state, so headless mode reports when
-   * the publisher's callback would be invoked. The SDK never sends a price.
+   * the publisher's callback would be invoked (and only if they defined it).
+   * The SDK never sends a price.
    */
   function reportOfferShown(offerState: OfferState): void {
     if (!postsApi || lastOfferState === offerState) return;
+    // Headless: the publisher owns the UI, so an offer only counts as shown
+    // when they defined the callback that would present it.
+    if (config.headless) {
+      const callback = offerState === 'login' ? config.onLoginRequired
+        : offerState === 'purchase' ? config.onPurchaseRequired
+        : config.onInsufficientCredits;
+      if (!callback) return;
+    }
     lastOfferState = offerState;
     decisionId = undefined; // belongs to the previous offer
 
@@ -117,8 +126,9 @@ export function createPaywall(
         hostName: config.hostName,
         state: offerState,
         surface: 'sdk',
-        // Consent denied: the anonId is never created, read or sent.
-        anonId: consent === 'denied' ? undefined : getOrCreateAnonId(),
+        // Consent denied, or the beacon (the anonId's only owner) turned off:
+        // the anonId is never created, read or sent.
+        anonId: consent === 'denied' || config.enableBeacon === false ? undefined : getOrCreateAnonId(),
         consent,
         referrer: document.referrer || undefined,
       }))
