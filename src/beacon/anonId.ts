@@ -69,3 +69,12 @@ export function getOrCreateAnonId(): string {
   writeStored(id);
   return id;
 }
+
+/**
+ * Read-only: returns the persisted anonId if one exists, never creating one.
+ * Used where an id may be attached if the beacon layer already made it, but
+ * must not be minted just for that purpose (e.g. account linking at sign-in).
+ */
+export function getAnonIdIfPresent(): string | null {
+  return readStored()?.value ?? null;
+}

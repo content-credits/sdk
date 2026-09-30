@@ -262,6 +262,60 @@ describe('credits api purchaseArticle decisionId', () => {
   });
 });
 
+describe('signed-out answer from check-access', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tokenPresent = true;
+    localStorage.clear();
+  });
+
+  it('SIGN_IN_REQUIRED (200) ends in the login state, not signed in', async () => {
+    const onLoginRequired = vi.fn();
+    const state = createState();
+    const postsApi = { observe: vi.fn(), offerShown: vi.fn().mockResolvedValue({}) };
+    const module = createPaywall(
+      cfg({ onLoginRequired }),
+      {
+        checkAccess: vi.fn().mockResolvedValue({
+          success: false, code: 'SIGN_IN_REQUIRED', message: 'Sign in to unlock this article.',
+          requiredCredits: 2, creditBalance: null, principal: { type: 'anonymous' },
+        }),
+        purchaseArticle: vi.fn(),
+      } as any,
+      state, createEventEmitter(), gateApi as any, postsApi as any
+    );
+    await module.init();
+    expect(state.get()).toEqual(expect.objectContaining({ isLoggedIn: false, hasAccess: false, isLoaded: true }));
+    expect(rendererApi.render).toHaveBeenCalledWith('login', expect.any(Object));
+    expect(rendererApi.render).not.toHaveBeenCalledWith('purchase', expect.anything(), expect.anything());
+    expect(onLoginRequired).toHaveBeenCalledTimes(1);
+    expect(postsApi.offerShown.mock.calls[0][0].state).toBe('login');
+  });
+
+  it('principal anonymous alone is also treated as signed out', async () => {
+    const state = createState();
+    const module = createPaywall(
+      cfg(),
+      { checkAccess: vi.fn().mockResolvedValue({ success: false, principal: { type: 'anonymous' } }), purchaseArticle: vi.fn() } as any,
+      state, createEventEmitter(), gateApi as any
+    );
+    await module.init();
+    expect(state.get().isLoggedIn).toBe(false);
+    expect(rendererApi.render).toHaveBeenCalledWith('login', expect.any(Object));
+  });
+
+  it('headless: login offer only reported when onLoginRequired is defined', async () => {
+    const postsApi = { observe: vi.fn(), offerShown: vi.fn().mockResolvedValue({}) };
+    const module = createPaywall(
+      cfg({ headless: true }),
+      { checkAccess: vi.fn().mockResolvedValue({ success: false, code: 'SIGN_IN_REQUIRED' }), purchaseArticle: vi.fn() } as any,
+      createState(), createEventEmitter(), gateApi as any, postsApi as any
+    );
+    await module.init();
+    expect(postsApi.offerShown).not.toHaveBeenCalled();
+  });
+});
+
 describe('offer-shown: beacon off and headless gating', () => {
   beforeEach(() => {
     vi.clearAllMocks();
