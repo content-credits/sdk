@@ -314,3 +314,16 @@ describe('view beacon waits for the session restore, bounded (ContentCredits._st
     expect(order).not.toContain('refresh:end');
   });
 });
+
+describe('SDK marker only when the SDK beacon is on', () => {
+  afterEach(() => { vi.resetModules(); });
+  it('enableBeacon:false does not set data-cc-sdk (extension keeps beaconing); default does', async () => {
+    vi.resetModules();
+    const { ContentCredits } = await import('../src/index');
+    document.documentElement.removeAttribute('data-cc-sdk');
+    ContentCredits.init({ apiKey: 'pub_123', enableBeacon: false, enableComments: false });
+    expect(document.documentElement.hasAttribute('data-cc-sdk')).toBe(false);
+    ContentCredits.init({ apiKey: 'pub_123', enableComments: false });
+    expect(document.documentElement.hasAttribute('data-cc-sdk')).toBe(true);
+  });
+});

@@ -116,7 +116,11 @@ export class ContentCredits {
       throw err;
     }
     const instance = new ContentCredits(config);
-    markSdkPresent(typeof __VERSION__ !== 'undefined' ? __VERSION__ : '1');
+    // Only announce "the SDK owns the view beacon" when it actually sends one;
+    // with enableBeacon:false the extension must still beacon (ADR-0022).
+    if (config.enableBeacon !== false) {
+      markSdkPresent(typeof __VERSION__ !== 'undefined' ? __VERSION__ : '1');
+    }
     void instance._start();
     return instance;
   }
