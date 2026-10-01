@@ -599,7 +599,7 @@ export function createPaywall(
     url.searchParams.set('origin', window.location.origin);
     url.searchParams.set('reason', 'insufficient');
     // Lets the accounts frontend attribute the top-up to the offer that sent the
-    // reader here (ADR-0021). The server validates it; it never trusts it blindly.
+    // reader here (ADR-0022). The server validates it; it never trusts it blindly.
     if (decisionId) url.searchParams.set('decisionId', decisionId);
     const requiredCredits = state.get().requiredCredits;
     if (requiredCredits !== null && requiredCredits !== undefined) {

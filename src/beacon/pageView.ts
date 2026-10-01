@@ -1,5 +1,5 @@
 /**
- * Page-load identity shared with the browser extension (ADR-0021).
+ * Page-load identity shared with the browser extension (ADR-0022).
  *
  * The extension's content script lives in an isolated JS world and cannot read
  * SDK globals, so the two coordinate through attributes on <html>:

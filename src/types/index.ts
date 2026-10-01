@@ -155,7 +155,7 @@ export interface ObservePostPayload {
   referrer?: string;
   /** Publisher-declared analytics consent; omitted anonId when `'denied'`. */
   consent?: AnalyticsConsent;
-  /** Integration surface that sent the beacon (ADR-0021). */
+  /** Integration surface that sent the beacon (ADR-0022). */
   surface?: EventSurface;
   /** Id of this page load, shared with the browser extension so one view is counted once. */
   pageViewId?: string;
@@ -163,7 +163,7 @@ export interface ObservePostPayload {
   internal?: boolean;
 }
 
-/** Which integration handled the reader's session (ADR-0021). */
+/** Which integration handled the reader's session (ADR-0022). */
 export type EventSurface = 'sdk' | 'extension' | 'wordpress';
 
 /** Reader actions on a displayed offer reported via `POST /posts/offer-action`. */
@@ -646,7 +646,7 @@ export interface AuthorizationResponseData {
   requiredCredits?: number;
 }
 
-/** Payload of the SDK's `request_purchase` bridge message (additive decisionId, ADR-0021). */
+/** Payload of the SDK's `request_purchase` bridge message (additive decisionId, ADR-0022). */
 export interface ExtensionPurchaseRequest {
   articleId: string;
   hostName: string;

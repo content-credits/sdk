@@ -178,7 +178,7 @@ export class ContentCredits {
     //    such (otherwise their first pageview of every browser session is an
     //    anonymous human view). Bounded: wait at most BEACON_SESSION_WAIT_MS,
     //    then send regardless. Fire-and-forget and independent of the paywall,
-    //    which does not wait on it (design doc §5.1, §7.1, ADR-0021).
+    //    which does not wait on it (design doc §5.1, §7.1, ADR-0022).
     void waitAtMost(restoreSession, BEACON_SESSION_WAIT_MS).then(() => {
       sendBeacon(this.config, this.postsApi);
     });
