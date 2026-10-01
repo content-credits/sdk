@@ -39,6 +39,12 @@ vi.mock('../src/auth/storage.js', () => ({
     set: vi.fn(),
     clear: vi.fn(),
   },
+  refreshTokenStorage: {
+    has: vi.fn(() => false),
+    get: vi.fn(() => null),
+    set: vi.fn(),
+    clear: vi.fn(),
+  },
 }));
 
 function cfg(overrides: Record<string, unknown> = {}): any {
