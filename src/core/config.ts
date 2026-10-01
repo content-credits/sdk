@@ -97,6 +97,8 @@ export function resolveConfig(raw: SDKConfig): ResolvedConfig {
     enableComments: raw.enableComments ?? true,
     enableBeacon: raw.enableBeacon ?? true,
     analyticsConsent: normalizeConsent(raw.analyticsConsent),
+    internalTraffic: raw.internalTraffic === true,
+    surface: raw.surface === 'wordpress' ? 'wordpress' : 'sdk',
     extensionId: 'ljehdpabbhgccmanhjdfacjnaigpgcml',
     debug: raw.debug ?? false,
     headless: raw.headless ?? false,

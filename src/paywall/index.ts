@@ -10,17 +10,23 @@ import { ApiError } from '../api/client.js';
 import { fetchGatedContent, ContentFetchError } from '../api/content.js';
 import { sanitizeHtml } from '../ui/sanitize.js';
 import { getOrCreateAnonId } from '../beacon/anonId.js';
+import { getPageViewId } from '../beacon/pageView.js';
 import type { createCreditsApi } from '../api/credits.js';
 import type { createPostsApi } from '../api/posts.js';
 import type { StateStore } from '../core/state.js';
 import type { EventEmitter } from '../core/events.js';
-import type { ResolvedConfig, AuthorizationResponseData, OfferState } from '../types/index.js';
+import type { ResolvedConfig, AuthorizationResponseData, OfferState, OfferActionType, EventSurface } from '../types/index.js';
 
 // How long to wait for the extension to respond to an authorization request
 // before falling back to the direct API check. MV3 service workers can take
 // a moment to wake up, but if they don't respond within this window we
 // assume the extension isn't functional and proceed without it.
 const EXTENSION_RESPONSE_TIMEOUT_MS = 3_000;
+
+// Longest a purchase (or an offer-action beacon) waits for the in-flight
+// offer-shown response, so a fast click still carries its decisionId. Bounded:
+// analytics must never make a reader wait longer than this.
+const OFFER_INFLIGHT_WAIT_MS = 1_000;
 
 // ─── Error classification ────────────────────────────────────────────────────
 // The backend is rolling out a machine-readable `code` field on error bodies
@@ -93,44 +99,46 @@ export function createPaywall(
   // server-minted decisionId that links a later purchase back to that offer.
   let lastOfferState: OfferState | null = null;
   let decisionId: string | undefined;
+  // The offer-shown request currently in flight (resolves when it settles).
+  let offerInflight: Promise<void> | null = null;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
+  /** Integration surface for analytics: the extension when its bridge is active, else the SDK host. */
+  function currentSurface(): EventSurface {
+    return extensionAvailable ? 'extension' : config.surface;
+  }
+
   /**
    * Report that a gated state (login / purchase / insufficient) was shown to a
-   * reader without access. Fire-and-forget: never awaited, never throws, and a
-   * failure is debug-logged only — it must not delay or break the paywall.
-   * Once per state transition per page load; call sites sit next to the
-   * render / headless-callback for that state, so headless mode reports when
-   * the publisher's callback would be invoked (and only if they defined it).
+   * reader without access. Fire-and-forget: never awaited by the paywall, never
+   * throws, and a failure is debug-logged only — it must not delay or break the
+   * paywall. Once per state transition per page load. Headless mode reports
+   * too, whether or not the publisher defined the matching callback: the
+   * transition itself is the exposure signal, and integrators who drive their
+   * UI from `subscribe()` / `getState()` would otherwise emit nothing.
    * The SDK never sends a price.
    */
   function reportOfferShown(offerState: OfferState): void {
     if (!postsApi || lastOfferState === offerState) return;
-    // Headless: the publisher owns the UI, so an offer only counts as shown
-    // when they defined the callback that would present it.
-    if (config.headless) {
-      const callback = offerState === 'login' ? config.onLoginRequired
-        : offerState === 'purchase' ? config.onPurchaseRequired
-        : config.onInsufficientCredits;
-      if (!callback) return;
-    }
     lastOfferState = offerState;
     decisionId = undefined; // belongs to the previous offer
 
     try {
       const consent = config.analyticsConsent ?? 'unknown';
-      void Promise.resolve(postsApi.offerShown({
+      const request = Promise.resolve(postsApi.offerShown({
         apiKey: config.apiKey,
         url: config.articleUrl,
         hostName: config.hostName,
         state: offerState,
-        surface: 'sdk',
+        surface: currentSurface(),
         // Consent denied, or the beacon (the anonId's only owner) turned off:
         // the anonId is never created, read or sent.
         anonId: consent === 'denied' || config.enableBeacon === false ? undefined : getOrCreateAnonId(),
         consent,
         referrer: document.referrer || undefined,
+        pageViewId: getPageViewId(),
+        ...(config.internalTraffic ? { internal: true } : {}),
       }))
         .then(res => {
           // Ignore a late response for a state the reader has already left.
@@ -141,9 +149,53 @@ export function createPaywall(
         .catch(err => {
           if (config.debug) console.warn('[ContentCredits] offer-shown failed', err);
         });
+      const tracked: Promise<void> = request.then(() => {
+        if (offerInflight === tracked) offerInflight = null;
+      });
+      offerInflight = tracked;
     } catch (err) {
       if (config.debug) console.warn('[ContentCredits] offer-shown failed', err);
     }
+  }
+
+  /** Waits (bounded) for the in-flight offer-shown so its decisionId is known. Never rejects. */
+  async function settleOffer(): Promise<void> {
+    const pending = offerInflight;
+    if (!pending) return;
+    await Promise.race([
+      pending,
+      new Promise<void>(resolve => setTimeout(resolve, OFFER_INFLIGHT_WAIT_MS)),
+    ]);
+  }
+
+  /**
+   * Report what the reader did with the current offer (sign-in started,
+   * checkout opened). Keyed on the offer's decisionId; fire-and-forget and
+   * consent-respecting (no identifier beyond the consent flag is sent here; the
+   * backend reuses the offer's own anonId). Never awaited by callers, so it can
+   * never delay a popup that must open inside the click gesture.
+   */
+  function reportOfferAction(action: OfferActionType): void {
+    if (!postsApi) return;
+    void (async (): Promise<void> => {
+      try {
+        await settleOffer();
+        if (!decisionId) return;
+        await postsApi.offerAction({
+          apiKey: config.apiKey,
+          url: config.articleUrl,
+          hostName: config.hostName,
+          decisionId,
+          action,
+          surface: currentSurface(),
+          consent: config.analyticsConsent ?? 'unknown',
+          pageViewId: getPageViewId(),
+          ...(config.internalTraffic ? { internal: true } : {}),
+        });
+      } catch (err) {
+        if (config.debug) console.warn('[ContentCredits] offer-action failed', err);
+      }
+    })();
   }
 
   /**
@@ -263,6 +315,8 @@ export function createPaywall(
   // ── Login ─────────────────────────────────────────────────────────────────
 
   async function doLogin(): Promise<void> {
+    reportOfferAction('signin_started');
+
     if (extensionAvailable) {
       bridge.requestLogin(config.hostName);
       return;
@@ -295,12 +349,17 @@ export function createPaywall(
       return;
     }
 
+    // A quick click can beat the offer-shown response; wait (bounded) so the
+    // purchase still carries its decisionId.
+    await settleOffer();
+
     if (extensionAvailable) {
       bridge.requestPurchase({
         articleId: config.apiKey,
         hostName: config.hostName,
         location: config.articleUrl,
         title: config.pageTitle,
+        ...(decisionId ? { decisionId } : {}),
       });
       return;
     }
@@ -315,6 +374,7 @@ export function createPaywall(
         postName: config.pageTitle,
         hostName: config.hostName,
         ...(decisionId ? { decisionId } : {}),
+        surface: config.surface,
       });
 
       if (result.success) {
@@ -520,6 +580,7 @@ export function createPaywall(
   }
 
   function doBuyMoreCredits(): void {
+    reportOfferAction('checkout_opened');
     removeCreditsPurchasedListeners();
     lastFallbackRecheckAt = 0;
     checkoutStartedAt = Date.now();
@@ -537,6 +598,9 @@ export function createPaywall(
     const url = new URL('/checkout', config.accountsUrl);
     url.searchParams.set('origin', window.location.origin);
     url.searchParams.set('reason', 'insufficient');
+    // Lets the accounts frontend attribute the top-up to the offer that sent the
+    // reader here (ADR-0021). The server validates it; it never trusts it blindly.
+    if (decisionId) url.searchParams.set('decisionId', decisionId);
     const requiredCredits = state.get().requiredCredits;
     if (requiredCredits !== null && requiredCredits !== undefined) {
       url.searchParams.set('required', String(requiredCredits));

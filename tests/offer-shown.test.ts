@@ -51,6 +51,7 @@ function cfg(overrides: Record<string, unknown> = {}): any {
     debug: false,
     headless: false,
     analyticsConsent: 'unknown',
+    surface: 'sdk',
     apiBaseUrl: 'https://api.contentcredits.com',
     accountsUrl: 'https://accounts.contentcredits.com',
     theme: { primaryColor: '#44C678', fontFamily: 'sans-serif' },
@@ -304,7 +305,7 @@ describe('signed-out answer from check-access', () => {
     expect(rendererApi.render).toHaveBeenCalledWith('login', expect.any(Object));
   });
 
-  it('headless: login offer only reported when onLoginRequired is defined', async () => {
+  it('headless: login offer is reported even without onLoginRequired (state transition, not callback)', async () => {
     const postsApi = { observe: vi.fn(), offerShown: vi.fn().mockResolvedValue({}) };
     const module = createPaywall(
       cfg({ headless: true }),
@@ -312,7 +313,8 @@ describe('signed-out answer from check-access', () => {
       createState(), createEventEmitter(), gateApi as any, postsApi as any
     );
     await module.init();
-    expect(postsApi.offerShown).not.toHaveBeenCalled();
+    expect(postsApi.offerShown).toHaveBeenCalledTimes(1);
+    expect(postsApi.offerShown.mock.calls[0][0].state).toBe('login');
   });
 });
 
@@ -331,25 +333,26 @@ describe('offer-shown: beacon off and headless gating', () => {
     expect(localStorage.getItem('cc_anon_id')).toBeNull();
   });
 
-  it('headless without the matching callback does not fire', async () => {
+  it('headless without any callback still fires on the state transition (integrators driven by subscribe())', async () => {
     const { module, postsApi } = setup({ config: { headless: true } });
     await module.init();
-    expect(postsApi.offerShown).not.toHaveBeenCalled();
+    expect(postsApi.offerShown).toHaveBeenCalledTimes(1);
+    expect(postsApi.offerShown.mock.calls[0][0].state).toBe('login');
   });
 
-  it('headless login fires only with onLoginRequired defined', async () => {
+  it('headless login fires with onLoginRequired defined', async () => {
     const { module, postsApi } = setup({ config: { headless: true, onLoginRequired: vi.fn() } });
     await module.init();
     expect(postsApi.offerShown).toHaveBeenCalledTimes(1);
     expect(postsApi.offerShown.mock.calls[0][0].state).toBe('login');
   });
 
-  it('headless insufficient needs onInsufficientCredits, not onPurchaseRequired', async () => {
+  it('headless insufficient reports the insufficient state regardless of which callback is defined', async () => {
     tokenPresent = true;
     const checkAccess = vi.fn().mockResolvedValue({ success: false, requiredCredits: 5, creditBalance: 1 });
     const a = setup({ checkAccess, config: { headless: true, onPurchaseRequired: vi.fn() } });
     await a.module.init();
-    expect(a.postsApi.offerShown).not.toHaveBeenCalled();
+    expect(a.postsApi.offerShown.mock.calls[0][0].state).toBe('insufficient');
     const b = setup({ checkAccess, config: { headless: true, onInsufficientCredits: vi.fn() } });
     await b.module.init();
     expect(b.postsApi.offerShown.mock.calls[0][0].state).toBe('insufficient');

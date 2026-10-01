@@ -1,5 +1,6 @@
 import { scrapeMetadata } from './metadata.js';
 import { getOrCreateAnonId } from './anonId.js';
+import { getPageViewId } from './pageView.js';
 import { tokenStorage } from '../auth/storage.js';
 import type { createPostsApi } from '../api/posts.js';
 import type { ResolvedConfig } from '../types/index.js';
@@ -57,6 +58,9 @@ export function sendBeacon(
         anonId: config.analyticsConsent === 'denied' ? undefined : getOrCreateAnonId(),
         referrer: document.referrer || undefined,
         consent: config.analyticsConsent,
+        surface: config.surface,
+        pageViewId: getPageViewId(),
+        ...(config.internalTraffic ? { internal: true } : {}),
       })
       .catch(err => {
         if (config.debug) console.warn('[ContentCredits] beacon failed', err);

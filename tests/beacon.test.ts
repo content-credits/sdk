@@ -48,6 +48,7 @@ describe('sendBeacon', () => {
       thumbnailUrl: 'https://example.com/img.jpg',
       anonId: expect.any(String),
       referrer: document.referrer || undefined,
+      pageViewId: expect.any(String),
     });
 
     const [payload] = observe.mock.calls[0];

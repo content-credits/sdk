@@ -1,9 +1,9 @@
 import type { ApiClient } from './client.js';
-import type { CheckAccessResponse, PurchaseResponse } from '../types/index.js';
+import type { CheckAccessResponse, PurchaseResponse, EventSurface } from '../types/index.js';
 
 export interface CreditsApi {
   checkAccess(params: { apiKey: string; postUrl: string; postName: string; hostName: string }): Promise<CheckAccessResponse>;
-  purchaseArticle(params: { apiKey: string; postUrl: string; postName: string; hostName: string; decisionId?: string }): Promise<PurchaseResponse>;
+  purchaseArticle(params: { apiKey: string; postUrl: string; postName: string; hostName: string; decisionId?: string; surface?: EventSurface }): Promise<PurchaseResponse>;
 }
 
 export function createCreditsApi(client: ApiClient): CreditsApi {
@@ -28,6 +28,7 @@ export function createCreditsApi(client: ApiClient): CreditsApi {
       postName: string;
       hostName: string;
       decisionId?: string;
+      surface?: EventSurface;
     }): Promise<PurchaseResponse> {
       return client.post<PurchaseResponse>('/credits/purchase-article', {
         apiKey: params.apiKey,
@@ -35,6 +36,7 @@ export function createCreditsApi(client: ApiClient): CreditsApi {
         postName: params.postName,
         hostName: params.hostName,
         ...(params.decisionId ? { decisionId: params.decisionId } : {}),
+        ...(params.surface ? { surface: params.surface } : {}),
       });
     },
   };

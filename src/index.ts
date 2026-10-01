@@ -28,6 +28,7 @@ import { tokenStorage, refreshTokenStorage } from './auth/storage.js';
 import { consumeAuthCodeFromUrl } from './auth/oauth.js';
 import { tryRefreshSession } from './auth/session.js';
 import { sendBeacon } from './beacon/index.js';
+import { markSdkPresent } from './beacon/pageView.js';
 
 import type {
   SDKConfig,
@@ -41,6 +42,18 @@ export type { SDKConfig, SDKState, SDKEventName, SDKEventHandler, AnalyticsConse
 export type { User, Comment, CommentSortBy } from './types/index.js';
 
 declare const __VERSION__: string;
+
+/** Longest the view beacon waits for the session restore before sending anyway. */
+const BEACON_SESSION_WAIT_MS = 1500;
+
+/** Resolves when `p` settles (resolved OR rejected) or after `ms`, whichever is first. Never rejects. */
+function waitAtMost(p: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise<void>(resolve => {
+    const timer = setTimeout(resolve, ms);
+    const done = (): void => { clearTimeout(timer); resolve(); };
+    p.then(done, done);
+  });
+}
 
 /**
  * Fail-closed content hide (B3). resolveConfig() throws on a missing/blank
@@ -103,6 +116,7 @@ export class ContentCredits {
       throw err;
     }
     const instance = new ContentCredits(config);
+    markSdkPresent(typeof __VERSION__ !== 'undefined' ? __VERSION__ : '1');
     void instance._start();
     return instance;
   }
@@ -144,24 +158,32 @@ export class ContentCredits {
     });
     if (!this.config.headless) earlyGate.hide();
 
-    // 3. Fire the post-discovery / view beacon. Fire-and-forget and
-    //    independent of auth/paywall state — it must never block or be
-    //    blocked by the rest of the lifecycle (design doc §5.1, §7.1).
-    sendBeacon(this.config, this.postsApi);
+    // 3. Restore the reader's session: consume any auth code that arrived via
+    //    redirect-back (mobile / popup-blocked / COOP-severed popup flows) and
+    //    exchange it for tokens, then, if there is still no access token,
+    //    attempt a silent refresh (every new browser session after the browser
+    //    was closed). Runs as one promise so the view beacon below can wait on it.
+    const restoreSession = (async (): Promise<void> => {
+      const gotCodeFromUrl = await consumeAuthCodeFromUrl(this.config);
+      if (gotCodeFromUrl) {
+        this.state.set({ isLoggedIn: true });
+      }
+      if (!tokenStorage.has()) {
+        await tryRefreshSession(this.config.apiBaseUrl);
+      }
+    })();
 
-    // 4. Consume any auth code that arrived via redirect-back (mobile /
-    //    popup-blocked / COOP-severed popup flows) and exchange it for tokens.
-    const gotCodeFromUrl = await consumeAuthCodeFromUrl(this.config);
-    if (gotCodeFromUrl) {
-      this.state.set({ isLoggedIn: true });
-    }
+    // 4. Fire the post-discovery / view beacon once the session is restored so a
+    //    signed-in team member or admin carries their token and is classified as
+    //    such (otherwise their first pageview of every browser session is an
+    //    anonymous human view). Bounded: wait at most BEACON_SESSION_WAIT_MS,
+    //    then send regardless. Fire-and-forget and independent of the paywall,
+    //    which does not wait on it (design doc §5.1, §7.1, ADR-0021).
+    void waitAtMost(restoreSession, BEACON_SESSION_WAIT_MS).then(() => {
+      sendBeacon(this.config, this.postsApi);
+    });
 
-    // 5. If no access token in memory/session, attempt a silent refresh.
-    //    This runs on every new browser session (after the browser was closed)
-    //    and silently re-authenticates the user using their stored refresh token.
-    if (!tokenStorage.has()) {
-      await tryRefreshSession(this.config.apiBaseUrl);
-    }
+    await restoreSession;
 
     // 7. Pass the pre-created gate so createPaywall reuses the same instance
     // (and its hiddenNodes list) rather than creating a second one.
@@ -376,6 +398,8 @@ function autoInit(): void {
     enableComments: ds.ccEnableComments !== 'false',
     enableBeacon: ds.ccEnableBeacon !== 'false',
     analyticsConsent: normalizeConsent(ds.ccAnalyticsConsent),
+    internalTraffic: ds.ccInternal === '1' || ds.ccInternal === 'true',
+    surface: ds.ccSurface === 'wordpress' ? 'wordpress' : undefined,
     debug: ds.ccDebug === 'true',
   };
 

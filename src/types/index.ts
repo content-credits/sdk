@@ -155,6 +155,31 @@ export interface ObservePostPayload {
   referrer?: string;
   /** Publisher-declared analytics consent; omitted anonId when `'denied'`. */
   consent?: AnalyticsConsent;
+  /** Integration surface that sent the beacon (ADR-0021). */
+  surface?: EventSurface;
+  /** Id of this page load, shared with the browser extension so one view is counted once. */
+  pageViewId?: string;
+  /** Internal-traffic hint (e.g. a WordPress editor); the backend can only downgrade human to publisher_team. */
+  internal?: boolean;
+}
+
+/** Which integration handled the reader's session (ADR-0021). */
+export type EventSurface = 'sdk' | 'extension' | 'wordpress';
+
+/** Reader actions on a displayed offer reported via `POST /posts/offer-action`. */
+export type OfferActionType = 'signin_started' | 'checkout_opened' | 'dismissed';
+
+/** POST /posts/offer-action request body. */
+export interface OfferActionPayload {
+  apiKey: string;
+  url: string;
+  hostName: string;
+  decisionId: string;
+  action: OfferActionType;
+  surface?: EventSurface;
+  consent?: AnalyticsConsent;
+  pageViewId?: string;
+  internal?: boolean;
 }
 
 /** Publisher-declared analytics consent state for this page load. */
@@ -169,10 +194,12 @@ export interface OfferShownPayload {
   url: string;
   hostName: string;
   state: OfferState;
-  surface: 'sdk';
+  surface: EventSurface;
   anonId?: string;
   consent?: AnalyticsConsent;
   referrer?: string;
+  pageViewId?: string;
+  internal?: boolean;
 }
 
 /** `decisionId` is null when the server could not resolve the post. */
@@ -264,6 +291,26 @@ export interface SDKConfig {
    * Default: `'unknown'`
    */
   analyticsConsent?: AnalyticsConsent;
+
+  /**
+   * Marks this page load as internal traffic (e.g. a logged-in WordPress
+   * editor previewing a post). Sent as `internal: true` on the analytics calls;
+   * the backend then files the reader under publisher team rather than human
+   * readers. It can only ever downgrade a reader, never upgrade one.
+   * Data attribute: `data-cc-internal="1"`.
+   *
+   * Default: `false`
+   */
+  internalTraffic?: boolean;
+
+  /**
+   * Which integration is hosting the SDK, reported on analytics events. The
+   * WordPress plugin sets `'wordpress'`; everyone else leaves the default.
+   * Data attribute: `data-cc-surface`.
+   *
+   * Default: `'sdk'`
+   */
+  surface?: 'sdk' | 'wordpress';
 
   /** Visual theme options */
   theme?: SDKTheme;
@@ -597,6 +644,16 @@ export interface AuthorizationResponseData {
   doesHaveAccess: boolean;
   creditBalance?: number;
   requiredCredits?: number;
+}
+
+/** Payload of the SDK's `request_purchase` bridge message (additive decisionId, ADR-0021). */
+export interface ExtensionPurchaseRequest {
+  articleId: string;
+  hostName: string;
+  location: string;
+  title: string;
+  /** The offer this purchase came from; the extension forwards it to purchase-article. */
+  decisionId?: string;
 }
 
 export interface PurchaseResponseData {
