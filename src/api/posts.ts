@@ -1,9 +1,10 @@
 import type { ApiClient } from './client.js';
-import type { ObservePostPayload, ObservePostResponse, OfferShownPayload, OfferShownResponse } from '../types/index.js';
+import type { ObservePostPayload, ObservePostResponse, OfferShownPayload, OfferShownResponse, OfferActionPayload } from '../types/index.js';
 
 export interface PostsApi {
   observe(payload: ObservePostPayload): Promise<ObservePostResponse>;
   offerShown(payload: OfferShownPayload): Promise<OfferShownResponse>;
+  offerAction(payload: OfferActionPayload): Promise<{ success?: boolean; ignored?: boolean }>;
 }
 
 export function createPostsApi(client: ApiClient): PostsApi {
@@ -21,6 +22,9 @@ export function createPostsApi(client: ApiClient): PostsApi {
         ...(payload.anonId ? { anonId: payload.anonId } : {}),
         ...(payload.referrer ? { referrer: payload.referrer } : {}),
         ...(payload.consent ? { consent: payload.consent } : {}),
+        ...(payload.surface ? { surface: payload.surface } : {}),
+        ...(payload.pageViewId ? { pageViewId: payload.pageViewId } : {}),
+        ...(payload.internal ? { internal: true } : {}),
       });
     },
 
@@ -36,6 +40,24 @@ export function createPostsApi(client: ApiClient): PostsApi {
         ...(payload.anonId ? { anonId: payload.anonId } : {}),
         ...(payload.consent ? { consent: payload.consent } : {}),
         ...(payload.referrer ? { referrer: payload.referrer } : {}),
+        ...(payload.pageViewId ? { pageViewId: payload.pageViewId } : {}),
+        ...(payload.internal ? { internal: true } : {}),
+      });
+    },
+
+    // Reader action on a displayed offer (sign-in started, checkout opened,
+    // dismissed), keyed on the decisionId from offerShown. Fire-and-forget.
+    offerAction(payload: OfferActionPayload): Promise<{ success?: boolean; ignored?: boolean }> {
+      return client.post<{ success?: boolean; ignored?: boolean }>('/posts/offer-action', {
+        apiKey: payload.apiKey,
+        url: payload.url,
+        hostName: payload.hostName,
+        decisionId: payload.decisionId,
+        action: payload.action,
+        ...(payload.surface ? { surface: payload.surface } : {}),
+        ...(payload.consent ? { consent: payload.consent } : {}),
+        ...(payload.pageViewId ? { pageViewId: payload.pageViewId } : {}),
+        ...(payload.internal ? { internal: true } : {}),
       });
     },
   };

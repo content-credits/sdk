@@ -2,6 +2,7 @@ import type {
   ExtensionMessage,
   AuthorizationResponseData,
   PurchaseResponseData,
+  ExtensionPurchaseRequest,
 } from '../types/index.js';
 
 declare const __ACCOUNTS_URL__: string;
@@ -28,7 +29,7 @@ export interface ExtensionBridge {
   attach(): void;
   detach(): void;
   requestAuthorization(articleId: string, hostName: string): void;
-  requestPurchase(params: { articleId: string; hostName: string; location: string; title: string }): void;
+  requestPurchase(params: ExtensionPurchaseRequest): void;
   requestLogin(hostName: string): void;
   onAuthorizationResponse(handler: AuthResponseHandler): void;
   clearAuthorizationResponse(): void;
@@ -130,12 +131,7 @@ export function createExtensionBridge(): ExtensionBridge {
     );
   }
 
-  function requestPurchase(params: {
-    articleId: string;
-    hostName: string;
-    location: string;
-    title: string;
-  }): void {
+  function requestPurchase(params: ExtensionPurchaseRequest): void {
     const nonce = getNonce();
     window.postMessage(
       { type: 'request_purchase', nonce, data: params },
